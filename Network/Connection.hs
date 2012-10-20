@@ -13,25 +13,24 @@ module Network.Connection
       Connection
     , connectionID
     , ConnectionParams(..)
-    , TLSConf
-    , TLSSetting(..)
+    , TLSSettings(..)
     , SockSettings(..)
 
     -- * Library initialization
     , initConnection
     , ConnectionGlobal
 
-    -- * TLS configuration creation
-    , tlsConfSimple
-    , tlsConf
-
-    -- * Connection methods
+    -- * Connection operation
     , connectFromHandle
     , connectTo
+    , connectionClose
+
+    -- * Sending and receiving data
     , connectionGet
     , connectionGetChunk
     , connectionPut
-    , connectionClose
+
+    -- * TLS related operation
     , connectionSetSecure
     , connectionIsSecure
     ) where
@@ -69,15 +68,13 @@ instance TLS.SessionManager ConnectionSessionManager where
     sessionInvalidate (ConnectionSessionManager mvar) sessionID =
         modifyMVar_ mvar (return . M.delete sessionID)
 
-
 -- | Initialize the library with shared parameters between connection.
--- only necessary for TLS
 initConnection :: IO ConnectionGlobal
 initConnection = ConnectionGlobal <$> getSystemCertificateStore
 
--- | Simple parameters with all correct default values set for secure connection.
-tlsConfSimple :: ConnectionGlobal -> TLSSetting -> TLSConf
-tlsConfSimple cg ts = TLSConf $ TLS.defaultParamsClient
+makeTLSParams :: ConnectionGlobal -> TLSSettings -> TLS.Params
+makeTLSParams cg ts@(TLSSettingsSimple {}) =
+    TLS.defaultParamsClient
         { TLS.pConnectVersion    = TLS.TLS11
         , TLS.pAllowedVersions   = [TLS.TLS10,TLS.TLS11,TLS.TLS12]
         , TLS.pCiphers           = TLS.ciphersuite_all
@@ -86,10 +83,7 @@ tlsConfSimple cg ts = TLSConf $ TLS.defaultParamsClient
                                        then const $ return TLS.CertificateUsageAccept
                                        else TLS.certificateVerifyChain (globalCertificateStore cg)
         }
-
--- | allow to set parameters
-tlsConf :: TLS.TLSParams -> TLSConf
-tlsConf = TLSConf
+makeTLSParams _ (TLSSettings p) = p
 
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
 withBackend f conn = modifyMVar (connectionBackend conn) (\b -> f b >>= \a -> return (b,a))
@@ -103,18 +97,27 @@ withBackendModify f conn = modifyMVar_ (connectionBackend conn) f
 connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
 connectionNew p backend = Connection <$> newMVar backend <*> newMVar B.empty <*> pure (connectionHostname p, connectionPort p)
 
-connectFromHandle :: Handle -> ConnectionParams -> IO Connection
-connectFromHandle h p = withSecurity (connectionUseSecure p)
-    where withSecurity Nothing                    = connectionNew p $ ConnectionStream h
-          withSecurity (Just (TLSConf tlsParams)) = tlsEstablish h tlsParams >>= connectionNew p . ConnectionTLS
+-- | Use an already established handle to create a connection object.
+--
+-- if the TLS Settings is set, it will do the handshake with the server.
+-- The SOCKS settings have no impact here, as the handle is already established
+connectFromHandle :: ConnectionGlobal
+                  -> Handle
+                  -> ConnectionParams
+                  -> IO Connection
+connectFromHandle cg h p = withSecurity (connectionUseSecure p)
+    where withSecurity Nothing            = connectionNew p $ ConnectionStream h
+          withSecurity (Just tlsSettings) = tlsEstablish h (makeTLSParams cg tlsSettings) >>= connectionNew p . ConnectionTLS
 
--- | connect to a destination using the parameters specified.
-connectTo :: ConnectionParams -> IO Connection
-connectTo cParams = do
+-- | connect to a destination using the parameter
+connectTo :: ConnectionGlobal -- ^ The global context of this connection.
+          -> ConnectionParams -- ^ The parameters for this connection (where to connect, and such).
+          -> IO Connection    -- ^ The new established connection on success.
+connectTo cg cParams = do
         h <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)        
-        connectFromHandle h cParams
+        connectFromHandle cg h cParams
     where
-        conFct = case connectionSocks cParams of
+        conFct = case connectionUseSocks cParams of
                       Nothing                       -> N.connectTo
                       Just (SockSettingsSimple h p) -> socksConnectTo h (N.PortNumber p)
 
@@ -162,10 +165,12 @@ connectionClose = withBackend backendClose
 -- establish channel, e.g. supporting a STARTTLS command.
 -- 
 -- If the connection is already using TLS, nothing else happens.
-connectionSetSecure :: Connection -> TLS.TLSParams -> IO ()
-connectionSetSecure connection params = do
-        withBackendModify switchToTLS connection
-    where switchToTLS (ConnectionStream h) = ConnectionTLS <$> tlsEstablish h params
+connectionSetSecure :: ConnectionGlobal
+                    -> Connection
+                    -> TLSSettings
+                    -> IO ()
+connectionSetSecure cg connection params = withBackendModify switchToTLS connection
+    where switchToTLS (ConnectionStream h) = ConnectionTLS <$> tlsEstablish h (makeTLSParams cg params)
           switchToTLS s@(ConnectionTLS _)  = return s
 
 -- | Returns if the connection is establish securely or not.
