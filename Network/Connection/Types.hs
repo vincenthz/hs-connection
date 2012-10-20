@@ -71,6 +71,6 @@ data Connection = Connection
 --
 -- At the moment, this is only strictly needed to shared sessions and certificates
 -- when using a TLS enabled connection.
-data ConnectionGlobal = ConnectionGlobal
+data ConnectionContext = ConnectionContext
     { globalCertificateStore :: !CertificateStore
     }

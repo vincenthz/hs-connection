@@ -17,8 +17,8 @@ module Network.Connection
     , SockSettings(..)
 
     -- * Library initialization
-    , initConnection
-    , ConnectionGlobal
+    , initConnectionContext
+    , ConnectionContext
 
     -- * Connection operation
     , connectFromHandle
@@ -69,10 +69,10 @@ instance TLS.SessionManager ConnectionSessionManager where
         modifyMVar_ mvar (return . M.delete sessionID)
 
 -- | Initialize the library with shared parameters between connection.
-initConnection :: IO ConnectionGlobal
-initConnection = ConnectionGlobal <$> getSystemCertificateStore
+initConnectionContext :: IO ConnectionContext
+initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 
-makeTLSParams :: ConnectionGlobal -> TLSSettings -> TLS.Params
+makeTLSParams :: ConnectionContext -> TLSSettings -> TLS.Params
 makeTLSParams cg ts@(TLSSettingsSimple {}) =
     TLS.defaultParamsClient
         { TLS.pConnectVersion    = TLS.TLS11
@@ -101,7 +101,7 @@ connectionNew p backend = Connection <$> newMVar backend <*> newMVar B.empty <*>
 --
 -- if the TLS Settings is set, it will do the handshake with the server.
 -- The SOCKS settings have no impact here, as the handle is already established
-connectFromHandle :: ConnectionGlobal
+connectFromHandle :: ConnectionContext
                   -> Handle
                   -> ConnectionParams
                   -> IO Connection
@@ -110,9 +110,9 @@ connectFromHandle cg h p = withSecurity (connectionUseSecure p)
           withSecurity (Just tlsSettings) = tlsEstablish h (makeTLSParams cg tlsSettings) >>= connectionNew p . ConnectionTLS
 
 -- | connect to a destination using the parameter
-connectTo :: ConnectionGlobal -- ^ The global context of this connection.
-          -> ConnectionParams -- ^ The parameters for this connection (where to connect, and such).
-          -> IO Connection    -- ^ The new established connection on success.
+connectTo :: ConnectionContext -- ^ The global context of this connection.
+          -> ConnectionParams  -- ^ The parameters for this connection (where to connect, and such).
+          -> IO Connection     -- ^ The new established connection on success.
 connectTo cg cParams = do
         h <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)        
         connectFromHandle cg h cParams
@@ -165,7 +165,7 @@ connectionClose = withBackend backendClose
 -- establish channel, e.g. supporting a STARTTLS command.
 -- 
 -- If the connection is already using TLS, nothing else happens.
-connectionSetSecure :: ConnectionGlobal
+connectionSetSecure :: ConnectionContext
                     -> Connection
                     -> TLSSettings
                     -> IO ()
