@@ -42,15 +42,11 @@ import Control.Concurrent.MVar
 import qualified Network.TLS as TLS
 import qualified Network.TLS.Extra as TLS
 
-import Data.CertificateStore
 import System.Certificate.X509 (getSystemCertificateStore)
 
-import Network.BSD (HostName)
-import Network.Socket (PortNumber)
 import Network.Socks5
 import qualified Network as N
 
-import Data.Default
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
@@ -60,19 +56,7 @@ import qualified Crypto.Random.AESCtr as RNG
 import System.IO
 import qualified Data.Map as M
 
-data ConnectionBackend = ConnectionStream Handle
-                       | ConnectionTLS TLS.Context
-
-data ConnectionParams = ConnectionParams
-    { connectionHostname   :: HostName           -- ^ host name to connect to.
-    , connectionPort       :: PortNumber         -- ^ port number to connect to.
-    , connectionUseSecure  :: Maybe TLSConf      -- ^ optional TLS parameters.
-    , connectionSocks      :: Maybe SockSettings -- ^ optional Socks configuration.
-    }
-
-data SockSettings = SockSettingsSimple HostName PortNumber
-
-data TLSConf = TLSConf TLS.Params
+import Network.Connection.Types
 
 type Manager = MVar (M.Map TLS.SessionID TLS.SessionData)
 data ConnectionSessionManager = ConnectionSessionManager Manager
@@ -85,27 +69,6 @@ instance TLS.SessionManager ConnectionSessionManager where
     sessionInvalidate (ConnectionSessionManager mvar) sessionID =
         modifyMVar_ mvar (return . M.delete sessionID)
 
--- | This opaque type represent a connection to a destination.
-data Connection = Connection
-    { connectionBackend :: MVar ConnectionBackend
-    , connectionBuffer  :: MVar ByteString
-    , connectionID      :: (HostName, PortNumber)  -- ^ return a simple tuple of the port and hostname that we're connected to.
-    }
-
--- | Shared values (certificate store, sessions, ..) between connections
-data ConnectionGlobal = ConnectionGlobal
-    { globalCertificateStore :: !CertificateStore
-    }
-
--- | Simple setting tweak related to SSL/TLS
-data TLSSetting = TLSSetting
-    { settingDisableCertificateValidation :: Bool
-    , settingDisableSession               :: Bool
-    , settingUseServerName                :: Bool
-    }
-
-instance Default TLSSetting where
-    def = TLSSetting False False False
 
 -- | Initialize the library with shared parameters between connection.
 -- only necessary for TLS
