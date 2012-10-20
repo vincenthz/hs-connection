@@ -22,6 +22,7 @@ import qualified Network.TLS as TLS
 
 import System.IO (Handle)
 
+-- | Simple backend enumeration, either using a raw connection or a tls connection.
 data ConnectionBackend = ConnectionStream Handle
                        | ConnectionTLS TLS.Context
 
@@ -41,6 +42,12 @@ data ConnectionParams = ConnectionParams
     , connectionUseSocks   :: Maybe SockSettings -- ^ optional Socks configuration.
     }
 
+-- | Socks settings for the connection.
+--
+-- The simple settings is just the hostname and portnumber of the proxy server.
+--
+-- That's for now the only settings in the SOCKS package,
+-- socks password, or authentication is not yet implemented.
 data SockSettings = SockSettingsSimple HostName PortNumber
 
 -- | TLS Settings that can be either expressed as simple settings,
@@ -50,11 +57,15 @@ data SockSettings = SockSettingsSimple HostName PortNumber
 -- simple settings, you should use TLSSettingsSimple.
 data TLSSettings
     = TLSSettingsSimple
-             { settingDisableCertificateValidation :: Bool
-             , settingDisableSession               :: Bool
-             , settingUseServerName                :: Bool
-             }
-    | TLSSettings TLS.Params
+             { settingDisableCertificateValidation :: Bool -- ^ Disable certificate verification completely,
+                                                           --   this make TLS/SSL vulnerable to a MITM attack.
+                                                           --   not recommended to use, but for testing.
+             , settingDisableSession               :: Bool -- ^ Disable session management. TLS/SSL connections
+                                                           --   will always re-established their context.
+                                                           --   Not Implemented Yet.
+             , settingUseServerName                :: Bool -- ^ Use server name extension. Not Implemented Yet.
+             } -- ^ Simple TLS settings. recommended to use.
+    | TLSSettings TLS.Params -- ^ full blown TLS Settings directly using TLS.Params. for power users.
     deriving (Show)
 
 instance Default TLSSettings where
