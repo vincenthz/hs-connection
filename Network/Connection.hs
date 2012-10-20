@@ -63,9 +63,9 @@ data ConnectionBackend = ConnectionStream Handle
 
 data ConnectionParams = ConnectionParams
     { connectionHostname   :: HostName        -- ^ host name to connect to.
-    , connectionPort       :: PortNumber       -- ^ port number to connect to.
-    , connectionSocks      :: Maybe SocksConf  -- ^ optional Socks configuration.
+    , connectionPort       :: PortNumber      -- ^ port number to connect to.
     , connectionUseSecure  :: Maybe TLSConf   -- ^ optional TLS parameters.
+    , connectionSocks      :: Maybe SocksConf -- ^ optional Socks configuration.
     }
 
 data TLSConf = TLSConf TLS.Params
