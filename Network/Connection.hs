@@ -28,12 +28,13 @@ module Network.Connection
     , connectionIsSecure
     ) where
 
-import Control.Applicative ((<$>))
+import Control.Applicative
 import Control.Concurrent.MVar
 
 import qualified Network.TLS as TLS
 import qualified Network.TLS.Extra as TLS
 
+import Network.BSD (HostName)
 import Network.Socket (PortNumber)
 import Network.Socks5
 import qualified Network as N
@@ -51,7 +52,7 @@ data ConnectionBackend = ConnectionStream Handle
                        | ConnectionTLS TLS.Context
 
 data ConnectionParams = ConnectionParams
-    { connectionHostname   :: String           -- ^ host name to connect to.
+    { connectionHostname   :: HostName        -- ^ host name to connect to.
     , connectionPort       :: PortNumber       -- ^ port number to connect to.
     , connectionUseSecure  :: Maybe TLS.Params -- ^ optional TLS parameters.
     , connectionSocks      :: Maybe SocksConf  -- ^ optional Socks configuration.
