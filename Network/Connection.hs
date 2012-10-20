@@ -28,6 +28,7 @@ module Network.Connection
     , connectFromHandle
     , connectTo
     , connectionGet
+    , connectionGetChunk
     , connectionPut
     , connectionClose
     , connectionSetSecure
@@ -84,6 +85,7 @@ instance TLS.SessionManager ConnectionSessionManager where
 -- | This opaque type represent a connection to a destination.
 data Connection = Connection
     { connectionBackend :: MVar ConnectionBackend
+    , connectionBuffer  :: MVar ByteString
     , connectionID      :: (HostName, PortNumber)  -- ^ return a simple tuple of the port and hostname that we're connected to.
     }
 
@@ -133,7 +135,7 @@ withBackendModify :: (ConnectionBackend -> IO ConnectionBackend) -> Connection -
 withBackendModify f conn = modifyMVar_ (connectionBackend conn) f
 
 connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
-connectionNew p backend = Connection <$> newMVar backend <*> pure (connectionHostname p, connectionPort p)
+connectionNew p backend = Connection <$> newMVar backend <*> newMVar B.empty <*> pure (connectionHostname p, connectionPort p)
 
 connectFromHandle :: Handle -> ConnectionParams -> IO Connection
 connectFromHandle h p = withSecurity (connectionUseSecure p)
@@ -156,10 +158,30 @@ connectionPut connection content = withBackend doWrite connection
     where doWrite (ConnectionStream h) = B.hPut h content >> hFlush h
           doWrite (ConnectionTLS ctx)  = TLS.sendData ctx $ L.fromChunks [content]
 
+-- | Get some bytes from a connection.
+--
+-- The size argument is just the maximum that could be returned to the user,
+-- however the call will returns as soon as there's data, even if there's less
+-- data than expected.
+connectionGet :: Connection -> Int -> IO ByteString
+connectionGet con size = withBuffer getData con
+    where getData buf
+                | B.null buf           = do chunk <- withBackend getMoreData con
+                                            let (ret, remain) = B.splitAt size chunk
+                                            return (remain, ret)
+                | B.length buf >= size = let (ret, remain) = B.splitAt size buf
+                                          in return (remain, ret)
+                | otherwise            = return (B.empty, buf)
+          getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
+          getMoreData (ConnectionStream h)   = hWaitForInput h (-1) >> B.hGetNonBlocking h (16 * 1024)
+
 -- | Get the next block of data from the connection.
-connectionGet :: Connection -> IO ByteString
-connectionGet = withBackend getMoreData
-    where getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
+connectionGetChunk :: Connection -> IO ByteString
+connectionGetChunk con = withBuffer getData con
+    where getData buf
+                | B.null buf = withBackend getMoreData con >>= \chunk -> return (B.empty, chunk)
+                | otherwise  = return (B.empty, buf)
+          getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
           getMoreData (ConnectionStream h)   = hWaitForInput h (-1) >> B.hGetNonBlocking h (16 * 1024)
 
 -- | Close a connection.
