@@ -1,12 +1,18 @@
 Name:                connection
 Version:             0.1.0
-Description:         Simple connection API with raw or secure sockets.
+Description:
+    Simple network library for all your connection need.
+    .
+    Features: Really simple to use, SSL/TLS, SOCKS
+    .
+    This library provides a very simple api to create sockets
+    to a destination with the choice of SSL/TLS, and SOCKS.
 License:             BSD3
 License-file:        LICENSE
 Copyright:           Vincent Hanquez <vincent@snarc.org>
 Author:              Vincent Hanquez <vincent@snarc.org>
 Maintainer:          Vincent Hanquez <vincent@snarc.org>
-Synopsis:            Simple connection API with raw or secure sockets.
+Synopsis:            Simple and easy network connections API
 Build-Type:          Simple
 Category:            Network
 stability:           experimental
