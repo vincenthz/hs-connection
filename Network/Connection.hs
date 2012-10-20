@@ -11,6 +11,7 @@ module Network.Connection
     (
     -- * Type for a connection
       Connection
+    , connectionID
     , ConnectionParams(..)
     , TLS.Params(..)
 
@@ -70,6 +71,7 @@ instance TLS.SessionManager ConnectionSessionManager where
 -- | This opaque type represent a connection to a destination.
 data Connection = Connection
     { connectionBackend :: MVar ConnectionBackend
+    , connectionID      :: (HostName, PortNumber)  -- ^ return a simple tuple of the port and hostname that we're connected to.
     }
 
 -- | Simple parameters with all correct default values set for secure connection.
@@ -85,16 +87,19 @@ connectionSecureParamsSimple = TLS.defaultParamsClient
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
 withBackend f conn = modifyMVar (connectionBackend conn) (\b -> f b >>= \a -> return (b,a))
 
+withBuffer :: (ByteString -> IO (ByteString, b)) -> Connection -> IO b
+withBuffer f conn = modifyMVar (connectionBuffer conn) f
+
 withBackendModify :: (ConnectionBackend -> IO ConnectionBackend) -> Connection -> IO ()
 withBackendModify f conn = modifyMVar_ (connectionBackend conn) f
 
-connectionNew :: ConnectionBackend -> IO Connection
-connectionNew backend = Connection <$> newMVar backend
+connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
+connectionNew p backend = Connection <$> newMVar backend <*> pure (connectionHostname p, connectionPort p)
 
 connectFromHandle :: Handle -> ConnectionParams -> IO Connection
 connectFromHandle h p = withSecurity (connectionUseSecure p)
-    where withSecurity Nothing          = connectionNew $ ConnectionStream h
-          withSecurity (Just tlsParams) = tlsEstablish h tlsParams >>= connectionNew . ConnectionTLS
+    where withSecurity Nothing                    = connectionNew p $ ConnectionStream h
+          withSecurity (Just (TLSConf tlsParams)) = tlsEstablish h tlsParams >>= connectionNew p . ConnectionTLS
 
 -- | connect to a destination using the parameters specified.
 connectTo :: ConnectionParams -> IO Connection
