@@ -13,10 +13,16 @@ module Network.Connection
       Connection
     , connectionID
     , ConnectionParams(..)
-    , TLS.Params(..)
+    , TLSConf
+    , TLSSetting(..)
 
-    -- * TLS parameters value generator
-    , connectionSecureParamsSimple
+    -- * Library initialization
+    , initConnection
+    , ConnectionGlobal
+
+    -- * TLS configuration creation
+    , tlsConfSimple
+    , tlsConf
 
     -- * Connection methods
     , connectFromHandle
@@ -34,11 +40,15 @@ import Control.Concurrent.MVar
 import qualified Network.TLS as TLS
 import qualified Network.TLS.Extra as TLS
 
+import Data.CertificateStore
+import System.Certificate.X509 (getSystemCertificateStore)
+
 import Network.BSD (HostName)
 import Network.Socket (PortNumber)
 import Network.Socks5
 import qualified Network as N
 
+import Data.Default
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
@@ -54,9 +64,11 @@ data ConnectionBackend = ConnectionStream Handle
 data ConnectionParams = ConnectionParams
     { connectionHostname   :: HostName        -- ^ host name to connect to.
     , connectionPort       :: PortNumber       -- ^ port number to connect to.
-    , connectionUseSecure  :: Maybe TLS.Params -- ^ optional TLS parameters.
     , connectionSocks      :: Maybe SocksConf  -- ^ optional Socks configuration.
+    , connectionUseSecure  :: Maybe TLSConf   -- ^ optional TLS parameters.
     }
+
+data TLSConf = TLSConf TLS.Params
 
 type Manager = MVar (M.Map TLS.SessionID TLS.SessionData)
 data ConnectionSessionManager = ConnectionSessionManager Manager
@@ -75,15 +87,41 @@ data Connection = Connection
     , connectionID      :: (HostName, PortNumber)  -- ^ return a simple tuple of the port and hostname that we're connected to.
     }
 
+-- | Shared values (certificate store, sessions, ..) between connections
+data ConnectionGlobal = ConnectionGlobal
+    { globalCertificateStore :: !CertificateStore
+    }
+
+-- | Simple setting tweak related to SSL/TLS
+data TLSSetting = TLSSetting
+    { settingDisableCertificateValidation :: Bool
+    , settingDisableSession               :: Bool
+    , settingUseServerName                :: Bool
+    }
+
+instance Default TLSSetting where
+    def = TLSSetting False False False
+
+-- | Initialize the library with shared parameters between connection.
+-- only necessary for TLS
+initConnection :: IO ConnectionGlobal
+initConnection = ConnectionGlobal <$> getSystemCertificateStore
+
 -- | Simple parameters with all correct default values set for secure connection.
-connectionSecureParamsSimple :: TLS.TLSParams
-connectionSecureParamsSimple = TLS.defaultParamsClient
+tlsConfSimple :: ConnectionGlobal -> TLSSetting -> TLSConf
+tlsConfSimple cg ts = TLSConf $ TLS.defaultParamsClient
         { TLS.pConnectVersion    = TLS.TLS11
         , TLS.pAllowedVersions   = [TLS.TLS10,TLS.TLS11,TLS.TLS12]
         , TLS.pCiphers           = TLS.ciphersuite_all
         , TLS.pCertificates      = []
-        , TLS.onCertificatesRecv = TLS.certificateVerifyChain
+        , TLS.onCertificatesRecv = if settingDisableCertificateValidation ts
+                                       then const $ return TLS.CertificateUsageAccept
+                                       else TLS.certificateVerifyChain (globalCertificateStore cg)
         }
+
+-- | allow to set parameters
+tlsConf :: TLS.TLSParams -> TLSConf
+tlsConf = TLSConf
 
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
 withBackend f conn = modifyMVar (connectionBackend conn) (\b -> f b >>= \a -> return (b,a))
