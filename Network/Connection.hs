@@ -15,6 +15,7 @@ module Network.Connection
     , ConnectionParams(..)
     , TLSConf
     , TLSSetting(..)
+    , SockSettings(..)
 
     -- * Library initialization
     , initConnection
@@ -63,11 +64,13 @@ data ConnectionBackend = ConnectionStream Handle
                        | ConnectionTLS TLS.Context
 
 data ConnectionParams = ConnectionParams
-    { connectionHostname   :: HostName        -- ^ host name to connect to.
-    , connectionPort       :: PortNumber      -- ^ port number to connect to.
-    , connectionUseSecure  :: Maybe TLSConf   -- ^ optional TLS parameters.
-    , connectionSocks      :: Maybe SocksConf -- ^ optional Socks configuration.
+    { connectionHostname   :: HostName           -- ^ host name to connect to.
+    , connectionPort       :: PortNumber         -- ^ port number to connect to.
+    , connectionUseSecure  :: Maybe TLSConf      -- ^ optional TLS parameters.
+    , connectionSocks      :: Maybe SockSettings -- ^ optional Socks configuration.
     }
+
+data SockSettings = SockSettingsSimple HostName PortNumber
 
 data TLSConf = TLSConf TLS.Params
 
@@ -149,8 +152,8 @@ connectTo cParams = do
         connectFromHandle h cParams
     where
         conFct = case connectionSocks cParams of
-                      Nothing   -> N.connectTo
-                      Just conf -> socksConnectTo (socksHost conf) (N.PortNumber $ socksPort conf)
+                      Nothing                       -> N.connectTo
+                      Just (SockSettingsSimple h p) -> socksConnectTo h (N.PortNumber p)
 
 -- | Put a block of data in the connection.
 connectionPut :: Connection -> ByteString -> IO ()
