@@ -19,16 +19,17 @@ byte, receive a single byte, print it, and close the connection:
     import Network.Connection
 
     main = do
-       con <- connectTo $ ConnectionParams
-                              { connectionHostname  = "www.example.com"
-                              , connectionPort      = fromIntegral 4567
-                              , connectionUseSecure = Nothing
-                              , connectionSocks     = Nothing
-                              }
-       connectionPut con (B.singleton 0xa)
-       r <- connectionGet con 1
-       putStrLn $ show r
-       connectionClose con
+        ctx <- initConnectionContext
+        con <- connectTo ctx $ ConnectionParams
+                                  { connectionHostname  = "www.example.com"
+                                  , connectionPort      = fromIntegral 4567
+                                  , connectionUseSecure = Nothing
+                                  , connectionSocks     = Nothing
+                                  }
+        connectionPut con (B.singleton 0xa)
+        r <- connectionGet con 1
+        putStrLn $ show r
+        connectionClose con
 
 Using a socks proxy is easy, we just need replacing the connectionSocks
 parameter, for example connecting to the same host, but using a socks
