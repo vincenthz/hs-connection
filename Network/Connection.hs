@@ -91,9 +91,6 @@ withBackend f conn = modifyMVar (connectionBackend conn) (\b -> f b >>= \a -> re
 withBuffer :: (ByteString -> IO (ByteString, b)) -> Connection -> IO b
 withBuffer f conn = modifyMVar (connectionBuffer conn) f
 
-withBackendModify :: (ConnectionBackend -> IO ConnectionBackend) -> Connection -> IO ()
-withBackendModify f conn = modifyMVar_ (connectionBackend conn) f
-
 connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
 connectionNew p backend = Connection <$> newMVar backend <*> newMVar B.empty <*> pure (connectionHostname p, connectionPort p)
 
@@ -162,16 +159,22 @@ connectionClose = withBackend backendClose
 -- | Activate secure layer using the parameters specified.
 -- 
 -- This is typically used to negociate a TLS channel on an already
--- establish channel, e.g. supporting a STARTTLS command.
+-- establish channel, e.g. supporting a STARTTLS command. it also
+-- flush the received buffer to prevent application confusing
+-- received data before and after the setSecure call.
 -- 
 -- If the connection is already using TLS, nothing else happens.
 connectionSetSecure :: ConnectionContext
                     -> Connection
                     -> TLSSettings
                     -> IO ()
-connectionSetSecure cg connection params = withBackendModify switchToTLS connection
-    where switchToTLS (ConnectionStream h) = ConnectionTLS <$> tlsEstablish h (makeTLSParams cg params)
-          switchToTLS s@(ConnectionTLS _)  = return s
+connectionSetSecure cg connection params =
+    modifyMVar_ (connectionBuffer connection) $ \b ->
+    modifyMVar (connectionBackend connection) $ \backend ->
+        case backend of
+            (ConnectionStream h) -> do ctx <- tlsEstablish h (makeTLSParams cg params)
+                                       return (ConnectionTLS ctx, B.empty)
+            (ConnectionTLS _)    -> return (backend, b)
 
 -- | Returns if the connection is establish securely or not.
 connectionIsSecure :: Connection -> IO Bool
