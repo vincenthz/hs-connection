@@ -3,7 +3,7 @@ Version:             0.1.0
 Description:
     Simple network library for all your connection need.
     .
-    Features: Really simple to use, SSL/TLS, SOCKS
+    Features: Really simple to use, SSL/TLS, SOCKS.
     .
     This library provides a very simple api to create sockets
     to a destination with the choice of SSL/TLS, and SOCKS.
