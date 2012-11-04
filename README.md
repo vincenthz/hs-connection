@@ -23,7 +23,7 @@ byte, receive a single byte, print it, and close the connection:
         ctx <- initConnectionContext
         con <- connectTo ctx $ ConnectionParams
                                   { connectionHostname  = "www.example.com"
-                                  , connectionPort      = fromIntegral 4567
+                                  , connectionPort      = 4567
                                   , connectionUseSecure = Nothing
                                   , connectionUseSocks  = Nothing
                                   }
@@ -38,16 +38,16 @@ proxy at localhost:1080:
 
     con <- connectTo ctx $ ConnectionParams
                            { connectionHostname  = "www.example.com"
-                           , connectionPort      = fromIntegral 4567
+                           , connectionPort      = 4567
                            , connectionUseSecure = Nothing
-                           , connectionUseSocks  = Just $ SockSettingsSimple "localhost" (fromIntegral 1080)
+                           , connectionUseSocks  = Just $ SockSettingsSimple "localhost" 1080
                            }
 
 Connecting to a SSL style socket is equally easy, and need to set the UseSecure fields in ConnectionParams:
 
     con <- connectTo ctx $ ConnectionParams
                            { connectionHostname  = "www.example.com"
-                           , connectionPort      = fromIntegral 4567
+                           , connectionPort      = 4567
                            , connectionUseSecure = Just def
                            , connectionUseSocks  = Nothing
                            }
@@ -65,7 +65,7 @@ protocol using STARTTLS (e.g. IMAP, SMTP):
         ctx <- initConnectionContext
         con <- connectTo ctx $ ConnectionParams
                                   { connectionHostname  = "www.example.com"
-                                  , connectionPort      = fromIntegral 4567
+                                  , connectionPort      = 4567
                                   , connectionUseSecure = Nothing
                                   , connectionUseSocks  = Nothing
                                   }

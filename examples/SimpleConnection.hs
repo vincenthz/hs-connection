@@ -5,7 +5,7 @@ main = do
     ctx <- initConnectionContext
     con <- connectTo ctx $ ConnectionParams
                               { connectionHostname  = "www.example.com"
-                              , connectionPort      = fromIntegral 4567
+                              , connectionPort      = 4567
                               , connectionUseSecure = Nothing
                               , connectionUseSocks  = Nothing
                               }
