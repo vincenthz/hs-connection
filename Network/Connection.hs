@@ -28,6 +28,7 @@ module Network.Connection
     -- * Sending and receiving data
     , connectionGet
     , connectionGetChunk
+    , connectionGetChunk'
     , connectionPut
 
     -- * TLS related operation
@@ -130,25 +131,27 @@ connectionPut connection content = withBackend doWrite connection
 -- however the call will returns as soon as there's data, even if there's less
 -- data than expected.
 connectionGet :: Connection -> Int -> IO ByteString
-connectionGet con size = withBuffer getData con
-    where getData buf
-                | B.null buf           = do chunk <- withBackend getMoreData con
-                                            let (ret, remain) = B.splitAt size chunk
-                                            return (remain, ret)
-                | B.length buf >= size = let (ret, remain) = B.splitAt size buf
-                                          in return (remain, ret)
-                | otherwise            = return (B.empty, buf)
-          getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
-          getMoreData (ConnectionStream h)   = hWaitForInput h (-1) >> B.hGetNonBlocking h (16 * 1024)
+connectionGet conn size = connectionGetChunk' conn $ B.splitAt size
 
 -- | Get the next block of data from the connection.
 connectionGetChunk :: Connection -> IO ByteString
-connectionGetChunk con = withBuffer getData con
-    where getData buf
-                | B.null buf = withBackend getMoreData con >>= \chunk -> return (B.empty, chunk)
-                | otherwise  = return (B.empty, buf)
-          getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
-          getMoreData (ConnectionStream h)   = hWaitForInput h (-1) >> B.hGetNonBlocking h (16 * 1024)
+connectionGetChunk conn = connectionGetChunk' conn $ \s -> (s, B.empty)
+
+-- | Like 'connectionGetChunk', but return the unused portion to the buffer,
+-- where it will be the next chunk read.
+connectionGetChunk' :: Connection -> (ByteString -> (a, ByteString)) -> IO a
+connectionGetChunk' conn f = withBuffer getData conn
+  where getData buf
+          | B.null buf = do
+              chunk <- withBackend getMoreData conn
+              return $ swap $ f chunk
+          | otherwise =
+              return $ swap $ f buf
+
+        getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
+        getMoreData (ConnectionStream h)   = hWaitForInput h (-1) >> B.hGetNonBlocking h (16 * 1024)
+
+        swap (a, b) = (b, a)
 
 -- | Close a connection.
 connectionClose :: Connection -> IO ()
