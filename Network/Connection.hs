@@ -149,7 +149,7 @@ connectionGetChunk' conn f = withBuffer getData conn
               return $ swap $ f buf
 
         getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
-        getMoreData (ConnectionStream h)   = hWaitForInput h (-1) >> B.hGetNonBlocking h (16 * 1024)
+        getMoreData (ConnectionStream h)   = B.hGetSome h (16 * 1024)
 
         swap (a, b) = (b, a)
 
