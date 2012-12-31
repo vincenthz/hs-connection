@@ -30,6 +30,7 @@ module Network.Connection
     , connectionGet
     , connectionGetChunk
     , connectionGetChunk'
+    , connectionGetLine
     , connectionPut
 
     -- * TLS related operation
@@ -39,6 +40,7 @@ module Network.Connection
 
 import Control.Applicative
 import Control.Concurrent.MVar
+import Control.Monad (join)
 import qualified Control.Exception as E
 import qualified System.IO.Error as E
 
@@ -171,6 +173,40 @@ connectionGetChunkBase loc conn f =
 
     updateBuf buf = case f buf of (a, !buf') -> return (Just buf', a)
     closeBuf  buf = case f buf of (a, _buf') -> return (Nothing, a)
+
+-- | Get the next line, using ASCII LF as the line terminator.
+--
+-- This throws an 'isEOFError' exception on end of input.
+connectionGetLine :: Connection -> IO ByteString
+connectionGetLine conn =
+    getChunk (\s -> more (s:))
+             return
+             (throwEOF conn loc)
+  where
+    loc = "connectionGetLine"
+
+    -- Accumulate chunks using a difference list, and concatenate them
+    -- when an end-of-line indicator is reached.
+    more !dl =
+        getChunk (\s -> more (dl . (s:)))
+                 (\s -> done (dl . (s:)))
+                 (done dl)
+
+    done dl = return $! B.concat $ dl []
+
+    -- Get another chunk, and call one of the continuations
+    getChunk :: (ByteString -> IO r) -- moreK: need more input
+             -> (ByteString -> IO r) -- doneK: end of line (line terminator found)
+             -> IO r                 -- eofK:  end of file
+             -> IO r
+    getChunk moreK doneK eofK =
+      join $ connectionGetChunkBase loc conn $ \s ->
+        if B.null s
+          then (eofK, B.empty)
+          else case B.breakByte 10 s of
+                 (a, b)
+                   | B.null b  -> (moreK a, B.empty)
+                   | otherwise -> (doneK a, B.tail b)
 
 throwEOF :: Connection -> String -> IO a
 throwEOF conn loc =
