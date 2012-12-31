@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 -- |
 -- Module      : Network.Connection
 -- License     : BSD-style
@@ -29,6 +30,7 @@ module Network.Connection
     , connectionGet
     , connectionGetChunk
     , connectionGetChunk'
+    , connectionGetLine
     , connectionPut
 
     -- * TLS related operation
@@ -37,8 +39,8 @@ module Network.Connection
     ) where
 
 import Control.Applicative
-import Control.Monad ((>=>), when)
 import Control.Concurrent.MVar
+import Control.Monad (join)
 import qualified Control.Exception as E
 import qualified System.IO.Error as E
 
@@ -92,17 +94,11 @@ makeTLSParams _ (TLSSettings p) = p
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
 withBackend f conn = modifyMVar (connectionBackend conn) (\b -> f b >>= \a -> return (b,a))
 
-withBuffer :: (ByteString -> IO (ByteString, b)) -> Connection -> IO b
-withBuffer f conn = modifyMVar (connectionBuffer conn) f
-
-setEOF :: Connection -> IO ()
-setEOF conn = modifyMVar_ (connectionEOF conn) (const (return True))
-
-checkEOF :: Connection -> IO ()
-checkEOF conn = readMVar (connectionEOF conn) >>= flip when (E.ioError $ E.mkIOError E.eofErrorType "" Nothing Nothing)
-
 connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
-connectionNew p backend = Connection <$> newMVar backend <*> newMVar B.empty <*> pure (connectionHostname p, connectionPort p) <*> newMVar False
+connectionNew p backend =
+    Connection <$> newMVar backend
+               <*> newMVar (Just B.empty)
+               <*> pure (connectionHostname p, connectionPort p)
 
 -- | Use an already established handle to create a connection object.
 --
@@ -130,41 +126,95 @@ connectTo cg cParams = do
 
 -- | Put a block of data in the connection.
 connectionPut :: Connection -> ByteString -> IO ()
-connectionPut connection content = checkEOF connection >> withBackend doWrite connection
+connectionPut connection content = withBackend doWrite connection
     where doWrite (ConnectionStream h) = B.hPut h content >> hFlush h
           doWrite (ConnectionTLS ctx)  = TLS.sendData ctx $ L.fromChunks [content]
 
 -- | Get some bytes from a connection.
 --
--- The size argument is just the maximum that could be returned to the user,
--- however the call will returns as soon as there's data, even if there's less
--- data than expected.
+-- The size argument is just the maximum that could be returned to the user.
+-- The call will return as soon as there's data, even if there's less
+-- than requested.  Hence, it behaves like 'B.hGetSome'.
+--
+-- On end of input, 'connectionGet' returns 0, but subsequent calls will throw
+-- an 'E.isEOFError' exception.
 connectionGet :: Connection -> Int -> IO ByteString
-connectionGet conn size = connectionGetChunk' conn $ B.splitAt size
+connectionGet conn size
+  | size < 0  = fail "Network.Connection.connectionGet: size < 0"
+  | size == 0 = return B.empty
+  | otherwise = connectionGetChunkBase "connectionGet" conn $ B.splitAt size
 
 -- | Get the next block of data from the connection.
 connectionGetChunk :: Connection -> IO ByteString
-connectionGetChunk conn = connectionGetChunk' conn $ \s -> (s, B.empty)
+connectionGetChunk conn =
+    connectionGetChunkBase "connectionGetChunk" conn $ \s -> (s, B.empty)
 
 -- | Like 'connectionGetChunk', but return the unused portion to the buffer,
 -- where it will be the next chunk read.
 connectionGetChunk' :: Connection -> (ByteString -> (a, ByteString)) -> IO a
-connectionGetChunk' conn f = checkEOF conn >> withBuffer getData conn
-  where getData buf
-          | B.null buf = do
-              chunk <- withBackend (getMoreData >=> markEOF) conn
-              return $ swap $ f chunk
-          | otherwise =
-              return $ swap $ f buf
+connectionGetChunk' = connectionGetChunkBase "connectionGetChunk'"
 
-        markEOF bs
-            | B.null bs = setEOF conn >> return bs
-            | otherwise = return bs
+connectionGetChunkBase :: String -> Connection -> (ByteString -> (a, ByteString)) -> IO a
+connectionGetChunkBase loc conn f =
+    modifyMVar (connectionBuffer conn) $ \m ->
+        case m of
+            Nothing -> throwEOF conn loc
+            Just buf
+              | B.null buf -> do
+                  chunk <- withBackend getMoreData conn
+                  if B.null chunk
+                     then closeBuf chunk
+                     else updateBuf chunk
+              | otherwise ->
+                  updateBuf buf
+  where
+    getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
+    getMoreData (ConnectionStream h)   = B.hGetSome h (16 * 1024)
 
-        getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
-        getMoreData (ConnectionStream h)   = B.hGetSome h (16 * 1024)
+    updateBuf buf = case f buf of (a, !buf') -> return (Just buf', a)
+    closeBuf  buf = case f buf of (a, _buf') -> return (Nothing, a)
 
-        swap (a, b) = (b, a)
+-- | Get the next line, using ASCII LF as the line terminator.
+--
+-- This throws an 'isEOFError' exception on end of input.
+connectionGetLine :: Connection -> IO ByteString
+connectionGetLine conn =
+    getChunk (\s -> more (s:))
+             return
+             (throwEOF conn loc)
+  where
+    loc = "connectionGetLine"
+
+    -- Accumulate chunks using a difference list, and concatenate them
+    -- when an end-of-line indicator is reached.
+    more !dl =
+        getChunk (\s -> more (dl . (s:)))
+                 (\s -> done (dl . (s:)))
+                 (done dl)
+
+    done dl = return $! B.concat $ dl []
+
+    -- Get another chunk, and call one of the continuations
+    getChunk :: (ByteString -> IO r) -- moreK: need more input
+             -> (ByteString -> IO r) -- doneK: end of line (line terminator found)
+             -> IO r                 -- eofK:  end of file
+             -> IO r
+    getChunk moreK doneK eofK =
+      join $ connectionGetChunkBase loc conn $ \s ->
+        if B.null s
+          then (eofK, B.empty)
+          else case B.breakByte 10 s of
+                 (a, b)
+                   | B.null b  -> (moreK a, B.empty)
+                   | otherwise -> (doneK a, B.tail b)
+
+throwEOF :: Connection -> String -> IO a
+throwEOF conn loc =
+    E.throwIO $ E.mkIOError E.eofErrorType loc' Nothing (Just path)
+  where
+    loc' = "Network.Connection." ++ loc
+    path = let (host, port) = connectionID conn
+            in host ++ ":" ++ show port
 
 -- | Close a connection.
 connectionClose :: Connection -> IO ()
@@ -189,7 +239,7 @@ connectionSetSecure cg connection params =
     modifyMVar (connectionBackend connection) $ \backend ->
         case backend of
             (ConnectionStream h) -> do ctx <- tlsEstablish h (makeTLSParams cg params)
-                                       return (ConnectionTLS ctx, B.empty)
+                                       return (ConnectionTLS ctx, Just B.empty)
             (ConnectionTLS _)    -> return (backend, b)
 
 -- | Returns if the connection is establish securely or not.
