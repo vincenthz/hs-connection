@@ -74,9 +74,8 @@ instance Default TLSSettings where
 -- | This opaque type represent a connection to a destination.
 data Connection = Connection
     { connectionBackend :: MVar ConnectionBackend
-    , connectionBuffer  :: MVar ByteString
+    , connectionBuffer  :: MVar (Maybe ByteString) -- ^ this is set to 'Nothing' on EOF
     , connectionID      :: (HostName, PortNumber)  -- ^ return a simple tuple of the port and hostname that we're connected to.
-    , connectionEOF     :: MVar Bool
     }
 
 -- | Shared values (certificate store, sessions, ..) between connections
