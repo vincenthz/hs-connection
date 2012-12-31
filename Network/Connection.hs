@@ -37,7 +37,10 @@ module Network.Connection
     ) where
 
 import Control.Applicative
+import Control.Monad ((>=>), when)
 import Control.Concurrent.MVar
+import qualified Control.Exception as E
+import qualified System.IO.Error as E
 
 import qualified Network.TLS as TLS
 import qualified Network.TLS.Extra as TLS
@@ -92,8 +95,14 @@ withBackend f conn = modifyMVar (connectionBackend conn) (\b -> f b >>= \a -> re
 withBuffer :: (ByteString -> IO (ByteString, b)) -> Connection -> IO b
 withBuffer f conn = modifyMVar (connectionBuffer conn) f
 
+setEOF :: Connection -> IO ()
+setEOF conn = modifyMVar_ (connectionEOF conn) (const (return True))
+
+checkEOF :: Connection -> IO ()
+checkEOF conn = readMVar (connectionEOF conn) >>= flip when (E.ioError $ E.mkIOError E.eofErrorType "" Nothing Nothing)
+
 connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
-connectionNew p backend = Connection <$> newMVar backend <*> newMVar B.empty <*> pure (connectionHostname p, connectionPort p)
+connectionNew p backend = Connection <$> newMVar backend <*> newMVar B.empty <*> pure (connectionHostname p, connectionPort p) <*> newMVar False
 
 -- | Use an already established handle to create a connection object.
 --
@@ -121,7 +130,7 @@ connectTo cg cParams = do
 
 -- | Put a block of data in the connection.
 connectionPut :: Connection -> ByteString -> IO ()
-connectionPut connection content = withBackend doWrite connection
+connectionPut connection content = checkEOF connection >> withBackend doWrite connection
     where doWrite (ConnectionStream h) = B.hPut h content >> hFlush h
           doWrite (ConnectionTLS ctx)  = TLS.sendData ctx $ L.fromChunks [content]
 
@@ -140,13 +149,17 @@ connectionGetChunk conn = connectionGetChunk' conn $ \s -> (s, B.empty)
 -- | Like 'connectionGetChunk', but return the unused portion to the buffer,
 -- where it will be the next chunk read.
 connectionGetChunk' :: Connection -> (ByteString -> (a, ByteString)) -> IO a
-connectionGetChunk' conn f = withBuffer getData conn
+connectionGetChunk' conn f = checkEOF conn >> withBuffer getData conn
   where getData buf
           | B.null buf = do
-              chunk <- withBackend getMoreData conn
+              chunk <- withBackend (getMoreData >=> markEOF) conn
               return $ swap $ f chunk
           | otherwise =
               return $ swap $ f buf
+
+        markEOF bs
+            | B.null bs = setEOF conn >> return bs
+            | otherwise = return bs
 
         getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
         getMoreData (ConnectionStream h)   = B.hGetSome h (16 * 1024)
