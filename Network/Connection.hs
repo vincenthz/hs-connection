@@ -189,7 +189,7 @@ connectionGetChunkBase loc conn f =
 --
 -- This throws an 'isEOFError' exception on end of input,
 -- and LineTooLong when the limit is reached without a line terminator
-connectionGetLine :: Int           -- ^ Maximum bytestring size before raising a LineTooLong exception
+connectionGetLine :: Int           -- ^ Maximum number of bytes before raising a LineTooLong exception
                   -> Connection    -- ^ Connection
                   -> IO ByteString -- ^ The received line with the LF trimmed
 connectionGetLine limit conn =
