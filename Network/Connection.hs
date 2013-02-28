@@ -128,7 +128,7 @@ connectTo :: ConnectionContext -- ^ The global context of this connection.
           -> ConnectionParams  -- ^ The parameters for this connection (where to connect, and such).
           -> IO Connection     -- ^ The new established connection on success.
 connectTo cg cParams = do
-        h <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)        
+        h <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
         connectFromHandle cg h cParams
     where
         conFct = case connectionUseSocks cParams of
@@ -237,12 +237,12 @@ connectionClose = withBackend backendClose
           backendClose (ConnectionStream h) = hClose h
 
 -- | Activate secure layer using the parameters specified.
--- 
+--
 -- This is typically used to negociate a TLS channel on an already
 -- establish channel, e.g. supporting a STARTTLS command. it also
 -- flush the received buffer to prevent application confusing
 -- received data before and after the setSecure call.
--- 
+--
 -- If the connection is already using TLS, nothing else happens.
 connectionSetSecure :: ConnectionContext
                     -> Connection
