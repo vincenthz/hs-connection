@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 -- |
 -- Module      : Network.Connection
 -- License     : BSD-style
@@ -16,6 +17,9 @@ module Network.Connection
     , ConnectionParams(..)
     , TLSSettings(..)
     , SockSettings(..)
+
+    -- * Exceptions
+    , LineTooLong(..)
 
     -- * Library initialization
     , initConnectionContext
@@ -52,6 +56,7 @@ import System.Certificate.X509 (getSystemCertificateStore)
 import Network.Socks5
 import qualified Network as N
 
+import Data.Data
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
@@ -65,6 +70,12 @@ import Network.Connection.Types
 
 type Manager = MVar (M.Map TLS.SessionID TLS.SessionData)
 data ConnectionSessionManager = ConnectionSessionManager Manager
+
+-- | This is the exception raised if we reached the user specified limit for
+-- the line in ConnectionGetLine.
+data LineTooLong = LineTooLong deriving (Show,Typeable)
+
+instance E.Exception LineTooLong
 
 instance TLS.SessionManager ConnectionSessionManager where
     sessionResume (ConnectionSessionManager mvar) sessionID =
@@ -176,9 +187,12 @@ connectionGetChunkBase loc conn f =
 
 -- | Get the next line, using ASCII LF as the line terminator.
 --
--- This throws an 'isEOFError' exception on end of input.
-connectionGetLine :: Connection -> IO ByteString
-connectionGetLine conn =
+-- This throws an 'isEOFError' exception on end of input,
+-- and LineTooLong when the limit is reached without a line terminator
+connectionGetLine :: Int           -- ^ Maximum bytestring size before raising a LineTooLong exception
+                  -> Connection    -- ^ Connection
+                  -> IO ByteString -- ^ The received line with the LF trimmed
+connectionGetLine limit conn =
     getChunk (\s -> more (s:))
              return
              (throwEOF conn loc)
