@@ -47,7 +47,7 @@ data ConnectionParams = ConnectionParams
 -- The simple settings is just the hostname and portnumber of the proxy server.
 --
 -- That's for now the only settings in the SOCKS package,
--- socks password, or authentication is not yet implemented.
+-- socks password, or any sort of other authentications is not yet implemented.
 data SockSettings = SockSettingsSimple HostName PortNumber
 
 -- | TLS Settings that can be either expressed as simple settings,
