@@ -187,25 +187,35 @@ connectionGetChunkBase loc conn f =
 
 -- | Get the next line, using ASCII LF as the line terminator.
 --
--- This throws an 'isEOFError' exception on end of input,
--- and LineTooLong when the limit is reached without a line terminator
+-- This throws an 'isEOFError' exception on end of input, and LineTooLong when
+-- the number of bytes gathered is over the limit without a line terminator.
+--
+-- The actual line returned can be bigger than the limit specified, provided
+-- that the last chunk returned by the underlaying backend contains a LF.
+-- In another world only when we need more input and limit is reached that the
+-- LineTooLong exception will be raised.
+--
+-- An end of file will be considered as a line terminator too, if line is
+-- not empty.
 connectionGetLine :: Int           -- ^ Maximum number of bytes before raising a LineTooLong exception
                   -> Connection    -- ^ Connection
                   -> IO ByteString -- ^ The received line with the LF trimmed
-connectionGetLine limit conn =
-    getChunk (\s -> more (s:))
-             return
-             (throwEOF conn loc)
+connectionGetLine limit conn = more (throwEOF conn loc) 0 id
   where
     loc = "connectionGetLine"
+    lineTooLong = E.throwIO LineTooLong
 
     -- Accumulate chunks using a difference list, and concatenate them
     -- when an end-of-line indicator is reached.
-    more !dl =
-        getChunk (\s -> more (dl . (s:)))
+    more eofK !currentSz !dl =
+        getChunk (\s -> let len = B.length s
+                         in if currentSz + len > limit
+                               then lineTooLong
+                               else more eofK (currentSz + len) (dl . (s:)))
                  (\s -> done (dl . (s:)))
                  (done dl)
 
+    done :: ([ByteString] -> [ByteString]) -> IO ByteString
     done dl = return $! B.concat $ dl []
 
     -- Get another chunk, and call one of the continuations
