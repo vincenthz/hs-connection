@@ -13,7 +13,7 @@ module Network.Connection.Types
 import Control.Concurrent.MVar (MVar)
 
 import Data.Default
-import Data.CertificateStore
+import Data.X509.CertificateStore
 import Data.ByteString (ByteString)
 
 import Network.BSD (HostName)

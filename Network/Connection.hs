@@ -51,7 +51,7 @@ import qualified System.IO.Error as E
 import qualified Network.TLS as TLS
 import qualified Network.TLS.Extra as TLS
 
-import System.Certificate.X509 (getSystemCertificateStore)
+import System.X509 (getSystemCertificateStore)
 
 import Network.Socks5
 import qualified Network as N
@@ -69,7 +69,6 @@ import qualified Data.Map as M
 import Network.Connection.Types
 
 type Manager = MVar (M.Map TLS.SessionID TLS.SessionData)
-data ConnectionSessionManager = ConnectionSessionManager Manager
 
 -- | This is the exception raised if we reached the user specified limit for
 -- the line in ConnectionGetLine.
@@ -77,13 +76,13 @@ data LineTooLong = LineTooLong deriving (Show,Typeable)
 
 instance E.Exception LineTooLong
 
-instance TLS.SessionManager ConnectionSessionManager where
-    sessionResume (ConnectionSessionManager mvar) sessionID =
-        withMVar mvar (return . M.lookup sessionID)
-    sessionEstablish (ConnectionSessionManager mvar) sessionID sessionData =
-        modifyMVar_ mvar (return . M.insert sessionID sessionData)
-    sessionInvalidate (ConnectionSessionManager mvar) sessionID =
-        modifyMVar_ mvar (return . M.delete sessionID)
+connectionSessionManager :: Manager -> TLS.SessionManager
+connectionSessionManager mvar = TLS.SessionManager
+    { TLS.sessionResume     = \sessionID -> withMVar mvar (return . M.lookup sessionID)
+    , TLS.sessionEstablish  = \sessionID sessionData ->
+                               modifyMVar_ mvar (return . M.insert sessionID sessionData)
+    , TLS.sessionInvalidate = \sessionID -> modifyMVar_ mvar (return . M.delete sessionID)
+    }
 
 -- | Initialize the library with shared parameters between connection.
 initConnectionContext :: IO ConnectionContext
@@ -95,11 +94,12 @@ makeTLSParams cg ts@(TLSSettingsSimple {}) =
         { TLS.pConnectVersion    = TLS.TLS11
         , TLS.pAllowedVersions   = [TLS.TLS10,TLS.TLS11,TLS.TLS12]
         , TLS.pCiphers           = TLS.ciphersuite_all
-        , TLS.pCertificates      = []
+        , TLS.pCertificates      = Nothing
         , TLS.onCertificatesRecv = if settingDisableCertificateValidation ts
-                                       then const $ return TLS.CertificateUsageAccept
-                                       else TLS.certificateVerifyChain (globalCertificateStore cg)
+                                       then TLS.certificateNoChecks
+                                       else TLS.certificateChecks checks (globalCertificateStore cg)
         }
+    where checks = TLS.defaultChecks Nothing
 makeTLSParams _ (TLSSettings p) = p
 
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
@@ -272,7 +272,7 @@ connectionIsSecure conn = withBackend isSecure conn
     where isSecure (ConnectionStream _) = return False
           isSecure (ConnectionTLS _)    = return True
 
-tlsEstablish :: Handle -> TLS.TLSParams -> IO TLS.Context
+tlsEstablish :: Handle -> TLS.Params -> IO TLS.Context
 tlsEstablish handle tlsParams = do
     rng <- RNG.makeSystem
     ctx <- TLS.contextNewOnHandle handle tlsParams rng
