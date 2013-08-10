@@ -103,7 +103,7 @@ makeTLSParams cg ts@(TLSSettingsSimple {}) =
 makeTLSParams _ (TLSSettings p) = p
 
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
-withBackend f conn = modifyMVar (connectionBackend conn) (\b -> f b >>= \a -> return (b,a))
+withBackend f conn = readMVar (connectionBackend conn) >>= f
 
 connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
 connectionNew p backend =
