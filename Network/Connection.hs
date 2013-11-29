@@ -92,8 +92,8 @@ initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 makeTLSParams :: ConnectionContext -> TLSSettings -> TLS.Params
 makeTLSParams cg ts@(TLSSettingsSimple {}) =
     TLS.defaultParamsClient
-        { TLS.pConnectVersion    = TLS.TLS11
-        , TLS.pAllowedVersions   = [TLS.TLS10,TLS.TLS11,TLS.TLS12]
+        { TLS.pConnectVersion    = TLS.TLS10
+        , TLS.pAllowedVersions   = [TLS.TLS10]
         , TLS.pCiphers           = TLS.ciphersuite_all
         , TLS.pCertificates      = []
         , TLS.onCertificatesRecv = if settingDisableCertificateValidation ts
