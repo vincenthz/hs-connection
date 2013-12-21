@@ -32,6 +32,7 @@ module Network.Connection
 
     -- * Sending and receiving data
     , connectionGet
+    , connectionGetExact
     , connectionGetChunk
     , connectionGetChunk'
     , connectionGetLine
@@ -140,6 +141,22 @@ connectionPut :: Connection -> ByteString -> IO ()
 connectionPut connection content = withBackend doWrite connection
     where doWrite (ConnectionStream h) = B.hPut h content >> hFlush h
           doWrite (ConnectionTLS ctx)  = TLS.sendData ctx $ L.fromChunks [content]
+
+-- | Get exact count of bytes from a connection.
+--
+-- The size argument is the exact amount that must be returned to the user.
+-- The call will wait until all data is available.  Hence, it behaves like
+-- 'B.hGet'.
+--
+-- On end of input, 'connectionGetExact' will throw an 'E.isEOFError'
+-- exception.
+connectionGetExact :: Connection -> Int -> IO ByteString
+connectionGetExact conn x = loop B.empty 0
+  where loop bs y
+          | y == x = return bs
+          | otherwise = do
+            next <- connectionGet conn (x - y)
+            loop (B.append bs next) (y + (B.length next))
 
 -- | Get some bytes from a connection.
 --
