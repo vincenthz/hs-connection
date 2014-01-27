@@ -28,15 +28,15 @@ Library
   Build-Depends:     base >= 3 && < 5
                    , bytestring
                    , containers
-                   , data-default
+                   , data-default-class
                    , network >= 2.3
                    , tls >= 1.2
-                   , tls-extra >= 0.7
                    , cprng-aes
                    , socks >= 0.4
                    , x509 >= 1.4
                    , x509-store >= 1.4
                    , x509-system >= 1.4
+                   , x509-validation >= 1.5
   Exposed-modules:   Network.Connection
   Other-modules:     Network.Connection.Types
   ghc-options:       -Wall

@@ -56,6 +56,7 @@ import System.X509 (getSystemCertificateStore)
 import Network.Socks5
 import qualified Network as N
 
+import Data.Default.Class
 import Data.Data
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -88,18 +89,21 @@ connectionSessionManager mvar = TLS.SessionManager
 initConnectionContext :: IO ConnectionContext
 initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 
-makeTLSParams :: ConnectionContext -> TLSSettings -> TLS.Params
+makeTLSParams :: ConnectionContext -> TLSSettings -> TLS.ClientParams
 makeTLSParams cg ts@(TLSSettingsSimple {}) =
-    TLS.defaultParamsClient
-        { TLS.pConnectVersion    = TLS.TLS11
-        , TLS.pAllowedVersions   = [TLS.TLS10,TLS.TLS11,TLS.TLS12]
-        , TLS.pCiphers           = TLS.ciphersuite_all
-        , TLS.pCertificates      = Nothing
-        , TLS.onCertificatesRecv = if settingDisableCertificateValidation ts
-                                       then TLS.certificateNoChecks
-                                       else TLS.certificateChecks checks (globalCertificateStore cg)
+    (TLS.defaultParamsClient "" B.empty)
+        { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
+        , TLS.clientShared    = def
+            { TLS.sharedCAStore         = globalCertificateStore cg
+            , TLS.sharedValidationCache = validationCache
+            -- , TLS.sharedSessionManager  = connectionSessionManager
+            }
         }
-    where checks = TLS.defaultChecks Nothing
+  where validationCache
+            | settingDisableCertificateValidation ts =
+                TLS.ValidationCache (\_ _ _ -> return TLS.ValidationCachePass)
+                                    (\_ _ _ -> return ())
+            | otherwise = def
 makeTLSParams _ (TLSSettings p) = p
 
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
@@ -272,9 +276,9 @@ connectionIsSecure conn = withBackend isSecure conn
     where isSecure (ConnectionStream _) = return False
           isSecure (ConnectionTLS _)    = return True
 
-tlsEstablish :: Handle -> TLS.Params -> IO TLS.Context
+tlsEstablish :: Handle -> TLS.ClientParams -> IO TLS.Context
 tlsEstablish handle tlsParams = do
     rng <- RNG.makeSystem
-    ctx <- TLS.contextNewOnHandle handle tlsParams rng
+    ctx <- TLS.contextNew handle tlsParams rng
     TLS.handshake ctx
     return ctx

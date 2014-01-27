@@ -12,7 +12,7 @@ module Network.Connection.Types
 
 import Control.Concurrent.MVar (MVar)
 
-import Data.Default
+import Data.Default.Class
 import Data.X509.CertificateStore
 import Data.ByteString (ByteString)
 
@@ -65,7 +65,7 @@ data TLSSettings
                                                            --   Not Implemented Yet.
              , settingUseServerName                :: Bool -- ^ Use server name extension. Not Implemented Yet.
              } -- ^ Simple TLS settings. recommended to use.
-    | TLSSettings TLS.Params -- ^ full blown TLS Settings directly using TLS.Params. for power users.
+    | TLSSettings TLS.ClientParams -- ^ full blown TLS Settings directly using TLS.Params. for power users.
     deriving (Show)
 
 instance Default TLSSettings where
