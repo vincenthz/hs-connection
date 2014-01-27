@@ -60,6 +60,7 @@ import Data.Default.Class
 import Data.Data
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as L
 
 import qualified Crypto.Random.AESCtr as RNG
@@ -89,9 +90,9 @@ connectionSessionManager mvar = TLS.SessionManager
 initConnectionContext :: IO ConnectionContext
 initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 
-makeTLSParams :: ConnectionContext -> TLSSettings -> TLS.ClientParams
-makeTLSParams cg ts@(TLSSettingsSimple {}) =
-    (TLS.defaultParamsClient "" B.empty)
+makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
+makeTLSParams cg cid ts@(TLSSettingsSimple {}) =
+    (TLS.defaultParamsClient (fst cid) portString)
         { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
         , TLS.clientShared    = def
             { TLS.sharedCAStore         = globalCertificateStore cg
@@ -104,16 +105,20 @@ makeTLSParams cg ts@(TLSSettingsSimple {}) =
                 TLS.ValidationCache (\_ _ _ -> return TLS.ValidationCachePass)
                                     (\_ _ _ -> return ())
             | otherwise = def
-makeTLSParams _ (TLSSettings p) = p
+        portString = BC.pack $ show $ snd cid
+makeTLSParams _ cid (TLSSettings p)
+    | fst cid /= fst (TLS.clientServerIdentification p) =
+        error "mismatch between given server identification and connection hostname"
+    | otherwise = p
 
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
 withBackend f conn = readMVar (connectionBackend conn) >>= f
 
-connectionNew :: ConnectionParams -> ConnectionBackend -> IO Connection
-connectionNew p backend =
+connectionNew :: ConnectionID -> ConnectionBackend -> IO Connection
+connectionNew cid backend =
     Connection <$> newMVar backend
                <*> newMVar (Just B.empty)
-               <*> pure (connectionHostname p, connectionPort p)
+               <*> pure cid
 
 -- | Use an already established handle to create a connection object.
 --
@@ -124,8 +129,9 @@ connectFromHandle :: ConnectionContext
                   -> ConnectionParams
                   -> IO Connection
 connectFromHandle cg h p = withSecurity (connectionUseSecure p)
-    where withSecurity Nothing            = connectionNew p $ ConnectionStream h
-          withSecurity (Just tlsSettings) = tlsEstablish h (makeTLSParams cg tlsSettings) >>= connectionNew p . ConnectionTLS
+    where withSecurity Nothing            = connectionNew cid $ ConnectionStream h
+          withSecurity (Just tlsSettings) = tlsEstablish h (makeTLSParams cg cid tlsSettings) >>= connectionNew cid . ConnectionTLS
+          cid = (connectionHostname p, connectionPort p)
 
 -- | connect to a destination using the parameter
 connectTo :: ConnectionContext -- ^ The global context of this connection.
@@ -266,7 +272,7 @@ connectionSetSecure cg connection params =
     modifyMVar_ (connectionBuffer connection) $ \b ->
     modifyMVar (connectionBackend connection) $ \backend ->
         case backend of
-            (ConnectionStream h) -> do ctx <- tlsEstablish h (makeTLSParams cg params)
+            (ConnectionStream h) -> do ctx <- tlsEstablish h (makeTLSParams cg (connectionID connection) params)
                                        return (ConnectionTLS ctx, Just B.empty)
             (ConnectionTLS _)    -> return (backend, b)
 
