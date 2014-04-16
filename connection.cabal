@@ -18,7 +18,8 @@ Category:            Network
 stability:           experimental
 Cabal-Version:       >=1.6
 Homepage:            http://github.com/vincenthz/hs-connection
-data-files:          README.md
+extra-source-files:  README.md
+                     CHANGELOG.md
 
 Library
   Build-Depends:     base >= 3 && < 5
