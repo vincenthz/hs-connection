@@ -90,6 +90,8 @@ connectionSessionManager mvar = TLS.SessionManager
 initConnectionContext :: IO ConnectionContext
 initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 
+-- | Create a final TLS 'ClientParams' according to the destination and the
+-- TLSSettings.
 makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
 makeTLSParams cg cid ts@(TLSSettingsSimple {}) =
     (TLS.defaultParamsClient (fst cid) portString)
