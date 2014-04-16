@@ -108,10 +108,9 @@ makeTLSParams cg cid ts@(TLSSettingsSimple {}) =
                                     (\_ _ _ -> return ())
             | otherwise = def
         portString = BC.pack $ show $ snd cid
-makeTLSParams _ cid (TLSSettings p)
-    | fst cid /= fst (TLS.clientServerIdentification p) =
-        error "mismatch between given server identification and connection hostname"
-    | otherwise = p
+makeTLSParams _ cid (TLSSettings p) =
+    p { TLS.clientServerIdentification = (fst cid, portString) }
+ where portString = BC.pack $ show $ snd cid
 
 withBackend :: (ConnectionBackend -> IO a) -> Connection -> IO a
 withBackend f conn = readMVar (connectionBackend conn) >>= f
