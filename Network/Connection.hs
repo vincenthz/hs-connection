@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |
 -- Module      : Network.Connection
 -- License     : BSD-style
@@ -16,7 +17,8 @@ module Network.Connection
     , connectionID
     , ConnectionParams(..)
     , TLSSettings(..)
-    , SockSettings(..)
+    , ProxySettings(..)
+    , SockSettings
 
     -- * Exceptions
     , LineTooLong(..)
@@ -65,6 +67,7 @@ import qualified Data.ByteString.Lazy as L
 
 import qualified Crypto.Random.AESCtr as RNG
 
+import System.Environment
 import System.IO
 import qualified Data.Map as M
 
@@ -139,12 +142,34 @@ connectTo :: ConnectionContext -- ^ The global context of this connection.
           -> ConnectionParams  -- ^ The parameters for this connection (where to connect, and such).
           -> IO Connection     -- ^ The new established connection on success.
 connectTo cg cParams = do
-        h <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
-        connectFromHandle cg h cParams
-    where
-        conFct = case connectionUseSocks cParams of
-                      Nothing                       -> N.connectTo
-                      Just (SockSettingsSimple h p) -> socksConnectTo h (N.PortNumber p)
+    conFct <- getConFct (connectionUseSocks cParams)
+    h      <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
+    connectFromHandle cg h cParams
+  where
+        getConFct Nothing                            = return N.connectTo
+        getConFct (Just (OtherProxy h p))            = return $ \_ _ -> N.connectTo h (N.PortNumber p)
+        getConFct (Just (SockSettingsSimple h p))    = return $ socksConnectTo h (N.PortNumber p)
+        getConFct (Just (SockSettingsEnvironment v)) = do
+            -- if we can't get the environment variable or that the variable cannot be parsed
+            -- we connect directly.
+            let name = maybe "SOCKS_SERVER" id v
+            evar <- E.try (getEnv name)
+            case evar of
+                Left (_ :: E.IOException) -> return N.connectTo
+                Right var                 ->
+                    case parseSocks var of
+                        Nothing             -> return N.connectTo
+                        Just (sHost, sPort) -> return $ socksConnectTo sHost (N.PortNumber $ fromIntegral (sPort :: Int))
+
+        -- Try to parse "host:port" or "host"
+        parseSocks s =
+            case break (== ':') s of
+                (sHost, "")        -> Just (sHost, 1080)
+                (sHost, ':':portS) ->
+                    case reads portS of
+                        [(sPort,"")] -> Just (sHost, sPort)
+                        _            -> Nothing
+                _                  -> Nothing
 
 -- | Put a block of data in the connection.
 connectionPut :: Connection -> ByteString -> IO ()

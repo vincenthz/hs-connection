@@ -39,16 +39,23 @@ data ConnectionParams = ConnectionParams
     { connectionHostname   :: HostName           -- ^ host name to connect to.
     , connectionPort       :: PortNumber         -- ^ port number to connect to.
     , connectionUseSecure  :: Maybe TLSSettings  -- ^ optional TLS parameters.
-    , connectionUseSocks   :: Maybe SockSettings -- ^ optional Socks configuration.
+    , connectionUseSocks   :: Maybe ProxySettings -- ^ optional Proxy/Socks configuration.
     }
 
--- | Socks settings for the connection.
+-- | Proxy settings for the connection.
 --
--- The simple settings is just the hostname and portnumber of the proxy server.
+-- OtherProxy handles specific application-level proxies like HTTP proxies.
+--
+-- The simple SOCKS settings is just the hostname and portnumber of the SOCKS proxy server.
 --
 -- That's for now the only settings in the SOCKS package,
 -- socks password, or any sort of other authentications is not yet implemented.
-data SockSettings = SockSettingsSimple HostName PortNumber
+data ProxySettings =
+      SockSettingsSimple HostName PortNumber
+    | SockSettingsEnvironment (Maybe String)
+    | OtherProxy HostName PortNumber
+
+type SockSettings = ProxySettings
 
 -- | TLS Settings that can be either expressed as simple settings,
 -- or as full blown TLS.Params settings.
