@@ -48,7 +48,7 @@ import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad (join)
 import qualified Control.Exception as E
-import qualified System.IO.Error as E
+import qualified System.IO.Error as E (mkIOError, eofErrorType)
 
 import qualified Network.TLS as TLS
 import qualified Network.TLS.Extra as TLS
