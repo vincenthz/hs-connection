@@ -20,23 +20,29 @@ Cabal-Version:       >=1.6
 Homepage:            http://github.com/vincenthz/hs-connection
 extra-source-files:  README.md
                      CHANGELOG.md
+                     cbits/*.h
 
 Library
   Build-Depends:     base >= 3 && < 5
                    , bytestring
+                   , byteable
+                   , crypto-random
                    , containers
                    , data-default-class
                    , network >= 2.3
                    , tls >= 1.2
-                   , cprng-aes
                    , socks >= 0.4
+                   , securemem
                    , x509 >= 1.4
                    , x509-store >= 1.4
                    , x509-system >= 1.4
                    , x509-validation >= 1.5
   Exposed-modules:   Network.Connection
   Other-modules:     Network.Connection.Types
+                     Network.Connection.ChachaRNG
   ghc-options:       -Wall
+  C-sources:         cbits/random_chacha.c
+  include-dirs:      cbits
 
 source-repository head
   type: git
