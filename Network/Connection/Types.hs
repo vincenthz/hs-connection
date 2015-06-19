@@ -11,7 +11,6 @@ module Network.Connection.Types
     where
 
 import Control.Concurrent.MVar (MVar)
-import Crypto.Random (EntropyPool)
 
 import Data.Default.Class
 import Data.X509.CertificateStore
@@ -94,5 +93,4 @@ data Connection = Connection
 -- when using a TLS enabled connection.
 data ConnectionContext = ConnectionContext
     { globalCertificateStore :: !CertificateStore
-    , globalEntropyPool      :: !EntropyPool
     }

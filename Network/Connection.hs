@@ -65,9 +65,6 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as L
 
-import           Crypto.Random (createEntropyPool, grabEntropyIO)
-import qualified Network.Connection.ChachaRNG as RNG
-
 import System.Environment
 import System.IO
 import qualified Data.Map as M
@@ -93,7 +90,6 @@ connectionSessionManager mvar = TLS.SessionManager
 -- | Initialize the library with shared parameters between connection.
 initConnectionContext :: IO ConnectionContext
 initConnectionContext = ConnectionContext <$> getSystemCertificateStore
-                                          <*> createEntropyPool
 
 -- | Create a final TLS 'ClientParams' according to the destination and the
 -- TLSSettings.
@@ -136,7 +132,7 @@ connectFromHandle :: ConnectionContext
                   -> IO Connection
 connectFromHandle cg h p = withSecurity (connectionUseSecure p)
     where withSecurity Nothing            = connectionNew cid $ ConnectionStream h
-          withSecurity (Just tlsSettings) = tlsEstablish cg h (makeTLSParams cg cid tlsSettings) >>= connectionNew cid . ConnectionTLS
+          withSecurity (Just tlsSettings) = tlsEstablish h (makeTLSParams cg cid tlsSettings) >>= connectionNew cid . ConnectionTLS
           cid = (connectionHostname p, connectionPort p)
 
 -- | connect to a destination using the parameter
@@ -300,7 +296,7 @@ connectionSetSecure cg connection params =
     modifyMVar_ (connectionBuffer connection) $ \b ->
     modifyMVar (connectionBackend connection) $ \backend ->
         case backend of
-            (ConnectionStream h) -> do ctx <- tlsEstablish cg h (makeTLSParams cg (connectionID connection) params)
+            (ConnectionStream h) -> do ctx <- tlsEstablish h (makeTLSParams cg (connectionID connection) params)
                                        return (ConnectionTLS ctx, Just B.empty)
             (ConnectionTLS _)    -> return (backend, b)
 
@@ -310,9 +306,8 @@ connectionIsSecure conn = withBackend isSecure conn
     where isSecure (ConnectionStream _) = return False
           isSecure (ConnectionTLS _)    = return True
 
-tlsEstablish :: ConnectionContext -> Handle -> TLS.ClientParams -> IO TLS.Context
-tlsEstablish cg handle tlsParams = do
-    rng <- RNG.initialize <$> grabEntropyIO 40 (globalEntropyPool cg)
-    ctx <- TLS.contextNew handle tlsParams rng
+tlsEstablish :: Handle -> TLS.ClientParams -> IO TLS.Context
+tlsEstablish handle tlsParams = do
+    ctx <- TLS.contextNew handle tlsParams
     TLS.handshake ctx
     return ctx
