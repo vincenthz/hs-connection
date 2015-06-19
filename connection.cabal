@@ -20,7 +20,6 @@ Cabal-Version:       >=1.6
 Homepage:            http://github.com/vincenthz/hs-connection
 extra-source-files:  README.md
                      CHANGELOG.md
-                     cbits/*.h
 
 Library
   Build-Depends:     base >= 3 && < 5
