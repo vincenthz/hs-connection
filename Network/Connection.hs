@@ -22,6 +22,8 @@ module Network.Connection
 
     -- * Exceptions
     , LineTooLong(..)
+    , HostNotResolved(..)
+    , HostCannotConnect(..)
 
     -- * Library initialization
     , initConnectionContext
@@ -58,7 +60,8 @@ import System.X509 (getSystemCertificateStore)
 
 import Network.Socks5
 import qualified Network as N
-import Network.Socket (Socket)
+import Network.Socket
+import Network.BSD (getProtocolNumber)
 import qualified Network.Socket as N (close)
 import qualified Network.Socket.ByteString as N
 
@@ -81,7 +84,15 @@ type Manager = MVar (M.Map TLS.SessionID TLS.SessionData)
 -- the line in ConnectionGetLine.
 data LineTooLong = LineTooLong deriving (Show,Typeable)
 
+-- | Exception raised when there's no resolution for a specific host
+data HostNotResolved = HostNotResolved String deriving (Show,Typeable)
+
+-- | Exception raised when the connect failed
+data HostCannotConnect = HostCannotConnect String [E.IOException] deriving (Show,Typeable)
+
 instance E.Exception LineTooLong
+instance E.Exception HostNotResolved
+instance E.Exception HostCannotConnect
 
 connectionSessionManager :: Manager -> TLS.SessionManager
 connectionSessionManager mvar = TLS.SessionManager
@@ -159,22 +170,22 @@ connectTo :: ConnectionContext -- ^ The global context of this connection.
 connectTo cg cParams = do
     conFct <- getConFct (connectionUseSocks cParams)
     h      <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
-    connectFromHandle cg h cParams
+    connectFromSocket cg h cParams
   where
-        getConFct Nothing                            = return N.connectTo
-        getConFct (Just (OtherProxy h p))            = return $ \_ _ -> N.connectTo h (N.PortNumber p)
-        getConFct (Just (SockSettingsSimple h p))    = return $ socksConnectTo h (N.PortNumber p)
+        getConFct Nothing                            = return resolve'
+        getConFct (Just (OtherProxy h p))            = return $ \_ _ -> resolve' h (N.PortNumber p)
+        getConFct (Just (SockSettingsSimple h p))    = return $ socksConnectTo' h (N.PortNumber p)
         getConFct (Just (SockSettingsEnvironment v)) = do
             -- if we can't get the environment variable or that the variable cannot be parsed
             -- we connect directly.
             let name = maybe "SOCKS_SERVER" id v
             evar <- E.try (getEnv name)
             case evar of
-                Left (_ :: E.IOException) -> return N.connectTo
+                Left (_ :: E.IOException) -> return resolve'
                 Right var                 ->
                     case parseSocks var of
-                        Nothing             -> return N.connectTo
-                        Just (sHost, sPort) -> return $ socksConnectTo sHost (N.PortNumber $ fromIntegral (sPort :: Int))
+                        Nothing             -> return resolve'
+                        Just (sHost, sPort) -> return $ socksConnectTo' sHost (N.PortNumber $ fromIntegral (sPort :: Int))
 
         -- Try to parse "host:port" or "host"
         parseSocks s =
@@ -185,6 +196,34 @@ connectTo cg cParams = do
                         [(sPort,"")] -> Just (sHost, sPort)
                         _            -> Nothing
                 _                  -> Nothing
+
+        resolve' host portid = do
+            let serv = case portid of
+                            N.Service serv -> serv
+                            N.PortNumber n -> show n
+                            _              -> error "cannot resolve service" 
+            proto <- getProtocolNumber "tcp"
+            let hints = defaultHints { addrFlags = [AI_ADDRCONFIG]
+                                     , addrProtocol = proto
+                                     , addrSocketType = Stream }
+            addrs <- getAddrInfo (Just hints) (Just host) (Just serv)
+            firstSuccessful $ map tryToConnect addrs
+          where
+            tryToConnect addr =
+                E.bracketOnError
+                    (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
+                    (N.close)
+                    (\sock -> connect sock (addrAddress addr) >> return sock)
+            firstSuccessful = go []
+              where
+                go :: [E.IOException] -> [IO a] -> IO a
+                go []      [] = E.throwIO $ HostNotResolved host
+                go l@(_:_) [] = E.throwIO $ HostCannotConnect host l
+                go acc     (act:followingActs) = do
+                    er <- E.try act
+                    case er of
+                        Left err -> go (err:acc) followingActs
+                        Right r  -> return r
 
 -- | Put a block of data in the connection.
 connectionPut :: Connection -> ByteString -> IO ()
