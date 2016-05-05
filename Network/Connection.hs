@@ -29,6 +29,7 @@ module Network.Connection
 
     -- * Connection operation
     , connectFromHandle
+    , connectFromSocket
     , connectTo
     , connectionClose
 
@@ -57,6 +58,9 @@ import System.X509 (getSystemCertificateStore)
 
 import Network.Socks5
 import qualified Network as N
+import Network.Socket (Socket)
+import qualified Network.Socket as N (close)
+import qualified Network.Socket.ByteString as N
 
 import Data.Default.Class
 import Data.Data
@@ -135,6 +139,19 @@ connectFromHandle cg h p = withSecurity (connectionUseSecure p)
           withSecurity (Just tlsSettings) = tlsEstablish h (makeTLSParams cg cid tlsSettings) >>= connectionNew cid . ConnectionTLS
           cid = (connectionHostname p, connectionPort p)
 
+-- | Use an already established handle to create a connection object.
+--
+-- if the TLS Settings is set, it will do the handshake with the server.
+-- The SOCKS settings have no impact here, as the handle is already established
+connectFromSocket :: ConnectionContext
+                  -> Socket
+                  -> ConnectionParams
+                  -> IO Connection
+connectFromSocket cg sock p = withSecurity (connectionUseSecure p)
+    where withSecurity Nothing            = connectionNew cid $ ConnectionSocket sock
+          withSecurity (Just tlsSettings) = tlsEstablish sock (makeTLSParams cg cid tlsSettings) >>= connectionNew cid . ConnectionTLS
+          cid = (connectionHostname p, connectionPort p)
+
 -- | connect to a destination using the parameter
 connectTo :: ConnectionContext -- ^ The global context of this connection.
           -> ConnectionParams  -- ^ The parameters for this connection (where to connect, and such).
@@ -173,6 +190,7 @@ connectTo cg cParams = do
 connectionPut :: Connection -> ByteString -> IO ()
 connectionPut connection content = withBackend doWrite connection
     where doWrite (ConnectionStream h) = B.hPut h content >> hFlush h
+          doWrite (ConnectionSocket s) = N.sendAll s content
           doWrite (ConnectionTLS ctx)  = TLS.sendData ctx $ L.fromChunks [content]
 
 -- | Get some bytes from a connection.
@@ -214,6 +232,7 @@ connectionGetChunkBase loc conn f =
                   updateBuf buf
   where
     getMoreData (ConnectionTLS tlsctx) = TLS.recvData tlsctx
+    getMoreData (ConnectionSocket sock) = N.recv sock 1500
     getMoreData (ConnectionStream h)   = B.hGetSome h (16 * 1024)
 
     updateBuf buf = case f buf of (a, !buf') -> return (Just buf', a)
@@ -278,6 +297,7 @@ throwEOF conn loc =
 connectionClose :: Connection -> IO ()
 connectionClose = withBackend backendClose
     where backendClose (ConnectionTLS ctx)  = TLS.bye ctx >> TLS.contextClose ctx
+          backendClose (ConnectionSocket sock) = N.close sock
           backendClose (ConnectionStream h) = hClose h
 
 -- | Activate secure layer using the parameters specified.
@@ -298,15 +318,18 @@ connectionSetSecure cg connection params =
         case backend of
             (ConnectionStream h) -> do ctx <- tlsEstablish h (makeTLSParams cg (connectionID connection) params)
                                        return (ConnectionTLS ctx, Just B.empty)
+            (ConnectionSocket s) -> do ctx <- tlsEstablish s (makeTLSParams cg (connectionID connection) params)
+                                       return (ConnectionTLS ctx, Just B.empty)
             (ConnectionTLS _)    -> return (backend, b)
 
 -- | Returns if the connection is establish securely or not.
 connectionIsSecure :: Connection -> IO Bool
 connectionIsSecure conn = withBackend isSecure conn
     where isSecure (ConnectionStream _) = return False
+          isSecure (ConnectionSocket _) = return False
           isSecure (ConnectionTLS _)    = return True
 
-tlsEstablish :: Handle -> TLS.ClientParams -> IO TLS.Context
+tlsEstablish :: TLS.HasBackend backend => backend -> TLS.ClientParams -> IO TLS.Context
 tlsEstablish handle tlsParams = do
     ctx <- TLS.contextNew handle tlsParams
     TLS.handshake ctx

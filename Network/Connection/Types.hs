@@ -17,13 +17,14 @@ import Data.X509.CertificateStore
 import Data.ByteString (ByteString)
 
 import Network.BSD (HostName)
-import Network.Socket (PortNumber)
+import Network.Socket (PortNumber, Socket)
 import qualified Network.TLS as TLS
 
 import System.IO (Handle)
 
 -- | Simple backend enumeration, either using a raw connection or a tls connection.
 data ConnectionBackend = ConnectionStream Handle
+                       | ConnectionSocket Socket
                        | ConnectionTLS TLS.Context
 
 -- | Connection Parameters to establish a Connection.
