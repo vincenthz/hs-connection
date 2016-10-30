@@ -49,6 +49,7 @@ module Network.Connection
     -- * TLS related operation
     , connectionSetSecure
     , connectionIsSecure
+    , defaultClientParams
     ) where
 
 import Control.Applicative
@@ -110,25 +111,34 @@ connectionSessionManager mvar = TLS.SessionManager
 initConnectionContext :: IO ConnectionContext
 initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 
--- | Create a final TLS 'ClientParams' according to the destination and the
--- TLSSettings.
-makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
-makeTLSParams cg cid ts@(TLSSettingsSimple {}) =
+-- | A default function for 'TLSSettingsLambda', equivalent to
+-- @'TLSSettingsSimple' False False True@.
+defaultClientParams :: ConnectionContext -> ConnectionID -> TLS.ClientParams
+defaultClientParams cg cid =
     (TLS.defaultParamsClient (fst cid) portString)
         { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
         , TLS.clientShared    = def
             { TLS.sharedCAStore         = globalCertificateStore cg
-            , TLS.sharedValidationCache = validationCache
             -- , TLS.sharedSessionManager  = connectionSessionManager
             }
         }
-  where validationCache
-            | settingDisableCertificateValidation ts =
-                TLS.ValidationCache (\_ _ _ -> return TLS.ValidationCachePass)
-                                    (\_ _ _ -> return ())
-            | otherwise = def
-        portString = BC.pack $ show $ snd cid
-makeTLSParams _ cid (TLSSettings p) =
+  where portString = BC.pack $ show $ snd cid
+
+-- | Create a final TLS 'ClientParams' according to the destination and the
+-- TLSSettings.
+makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
+makeTLSParams cg cid ts@(TLSSettingsSimple {})
+    | settingDisableCertificateValidation ts = dfltParams { TLS.clientShared = dcvShared }
+    | otherwise                              = dfltParams
+  where dfltParams = defaultClientParams cg cid
+        dcvShared = (TLS.clientShared dfltParams)
+                        { TLS.sharedValidationCache = alwaysPass
+                        }
+        alwaysPass =
+            TLS.ValidationCache (\_ _ _ -> return TLS.ValidationCachePass)
+                                (\_ _ _ -> return ())
+makeTLSParams cg cid (TLSSettingsLambda lambda) = lambda cg cid
+makeTLSParams _  cid (TLSSettings p) =
     p { TLS.clientServerIdentification = (fst cid, portString) }
  where portString = BC.pack $ show $ snd cid
 

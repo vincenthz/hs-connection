@@ -73,8 +73,25 @@ data TLSSettings
                                                            --   Not Implemented Yet.
              , settingUseServerName                :: Bool -- ^ Use server name extension. Not Implemented Yet.
              } -- ^ Simple TLS settings. recommended to use.
+    | TLSSettingsLambda (ConnectionContext -> ConnectionID -> TLS.ClientParams)
+               -- ^ Gives control to TLS Settings used for each connection.
+               --
+               -- Allows to override the defaults returned by
+               -- 'Network.Connection.defaultClientParams'.
     | TLSSettings TLS.ClientParams -- ^ full blown TLS Settings directly using TLS.Params. for power users.
-    deriving (Show)
+
+instance Show TLSSettings where
+    showsPrec d (TLSSettingsSimple dcv ds usn) =
+        showParen (d >= 11) $
+            showString "TLSSettingsSimple {"
+              . showString "settingDisableCertificateValidation = " . shows dcv . showString ", "
+              . showString "settingDisableSession = " . shows ds . showString ", "
+              . showString "settingUseServerName = " . shows usn
+              . showString "}"
+    showsPrec d (TLSSettingsLambda _) =
+        showParen (d >= 11) $ showString "TLSSettingsLambda <function>"
+    showsPrec d (TLSSettings clientParams) =
+        showParen (d >= 11) $ showString "TLSSettings " . showsPrec 11 clientParams
 
 instance Default TLSSettings where
     def = TLSSettingsSimple False False True
