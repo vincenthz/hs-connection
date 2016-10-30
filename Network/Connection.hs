@@ -14,7 +14,7 @@ module Network.Connection
     (
     -- * Type for a connection
       Connection
-    , connectionID
+    , ConnectionID
     , ConnectionParams(..)
     , TLSSettings(..)
     , ProxySettings(..)
@@ -34,6 +34,9 @@ module Network.Connection
     , connectFromSocket
     , connectTo
     , connectionClose
+
+    -- * Connection information
+    , connectionID
 
     -- * Sending and receiving data
     , connectionGet

@@ -79,6 +79,7 @@ data TLSSettings
 instance Default TLSSettings where
     def = TLSSettingsSimple False False True
 
+-- | Connection destination.
 type ConnectionID = (HostName, PortNumber)
 
 -- | This opaque type represent a connection to a destination.
