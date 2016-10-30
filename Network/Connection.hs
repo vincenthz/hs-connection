@@ -116,13 +116,32 @@ initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 defaultClientParams :: ConnectionContext -> ConnectionID -> TLS.ClientParams
 defaultClientParams cg cid =
     (TLS.defaultParamsClient (fst cid) portString)
-        { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
+        { TLS.clientSupported = def { TLS.supportedCiphers        = TLS.ciphersuite_all
+                                    , TLS.supportedHashSignatures = hashSignatures
+                                    }
         , TLS.clientShared    = def
             { TLS.sharedCAStore         = globalCertificateStore cg
             -- , TLS.sharedSessionManager  = connectionSessionManager
             }
         }
   where portString = BC.pack $ show $ snd cid
+
+        -- override default hash and signature algorithms in order to enable
+        -- ECDSA here, until this is enabled directly in tls
+        -- (see vincenthz/hs-tls#152)
+        hashSignatures =
+            [ (TLS.HashSHA512, TLS.SignatureRSA)
+            , (TLS.HashSHA384, TLS.SignatureRSA)
+            , (TLS.HashSHA256, TLS.SignatureRSA)
+            , (TLS.HashSHA224, TLS.SignatureRSA)
+            , (TLS.HashSHA1,   TLS.SignatureRSA)
+            , (TLS.HashSHA1,   TLS.SignatureDSS)
+            , (TLS.HashSHA512, TLS.SignatureECDSA)
+            , (TLS.HashSHA384, TLS.SignatureECDSA)
+            , (TLS.HashSHA256, TLS.SignatureECDSA)
+            , (TLS.HashSHA224, TLS.SignatureECDSA)
+            , (TLS.HashSHA1,   TLS.SignatureECDSA)
+            ]
 
 -- | Create a final TLS 'ClientParams' according to the destination and the
 -- TLSSettings.
