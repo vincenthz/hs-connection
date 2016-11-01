@@ -1,6 +1,6 @@
 import qualified Data.ByteString as B
 import Network.Connection
-import Data.Default
+import Data.Default.Class
 
 main = do
     ctx <- initConnectionContext
