@@ -136,8 +136,7 @@ defaultClientParams cg cid =
             , (TLS.HashSHA224, TLS.SignatureRSA)
             , (TLS.HashSHA1,   TLS.SignatureRSA)
             , (TLS.HashSHA1,   TLS.SignatureDSS)
-            , (TLS.HashSHA512, TLS.SignatureECDSA)
-            , (TLS.HashSHA384, TLS.SignatureECDSA)
+            -- ECDSA + SEC_p256r1 + SHA-384/512 need cryptonite >= 0.20
             , (TLS.HashSHA256, TLS.SignatureECDSA)
             , (TLS.HashSHA224, TLS.SignatureECDSA)
             , (TLS.HashSHA1,   TLS.SignatureECDSA)
