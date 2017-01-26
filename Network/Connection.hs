@@ -41,6 +41,7 @@ module Network.Connection
     , connectionGetChunk
     , connectionGetChunk'
     , connectionGetLine
+    , connectionWaitForInput
     , connectionPut
 
     -- * TLS related operation
@@ -74,6 +75,7 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as L
 
 import System.Environment
+import System.Timeout
 import System.IO
 import qualified Data.Map as M
 
@@ -273,6 +275,19 @@ connectionGetChunk conn =
 -- where it will be the next chunk read.
 connectionGetChunk' :: Connection -> (ByteString -> (a, ByteString)) -> IO a
 connectionGetChunk' = connectionGetChunkBase "connectionGetChunk'"
+
+-- | Wait for input to become available on a connection.
+--
+-- As with 'hWaitForInput', the timeout value is given in milliseconds.  If the
+-- timeout value is less than zero, then 'connectionWaitForInput' waits
+-- indefinitely.
+--
+-- Unlike 'hWaitForInput', this function does not do any decoding, so it
+-- returns true when there is /any/ available input, not just full characters.
+connectionWaitForInput :: Connection -> Int -> IO Bool
+connectionWaitForInput conn timeout_ms = maybe False (const True) <$> timeout timeout_ns tryGetChunk
+  where tryGetChunk = connectionGetChunkBase "connectionWaitForInput" conn $ \buf -> ((), buf)
+        timeout_ns  = timeout_ms * 1000
 
 connectionGetChunkBase :: String -> Connection -> (ByteString -> (a, ByteString)) -> IO a
 connectionGetChunkBase loc conn f =
