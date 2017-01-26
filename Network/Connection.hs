@@ -337,7 +337,7 @@ connectionGetLine limit conn = more (throwEOF conn loc) 0 id
       join $ connectionGetChunkBase loc conn $ \s ->
         if B.null s
           then (eofK, B.empty)
-          else case B.breakByte 10 s of
+          else case B.break (== 10) s of
                  (a, b)
                    | B.null b  -> (moreK a, B.empty)
                    | otherwise -> (doneK a, B.tail b)
