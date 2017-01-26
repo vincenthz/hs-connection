@@ -170,8 +170,9 @@ connectTo :: ConnectionContext -- ^ The global context of this connection.
           -> IO Connection     -- ^ The new established connection on success.
 connectTo cg cParams = do
     conFct <- getConFct (connectionUseSocks cParams)
-    h      <- conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
-    connectFromSocket cg h cParams
+    let doConnect = conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
+    E.bracketOnError doConnect N.close $ \h->
+        connectFromSocket cg h cParams
   where
         getConFct Nothing                            = return resolve'
         getConFct (Just (OtherProxy h p))            = return $ \_ _ -> resolve' h (N.PortNumber p)
