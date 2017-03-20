@@ -3,3 +3,4 @@ dist
 *.hi
 *.tix
 *.mix
+.stack-work/

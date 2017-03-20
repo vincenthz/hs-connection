@@ -368,9 +368,11 @@ throwEOF conn loc =
 -- | Close a connection.
 connectionClose :: Connection -> IO ()
 connectionClose = withBackend backendClose
-    where backendClose (ConnectionTLS ctx)  = TLS.bye ctx >> TLS.contextClose ctx
+    where backendClose (ConnectionTLS ctx)  = ignoreIOExc (TLS.bye ctx) `E.finally` TLS.contextClose ctx
           backendClose (ConnectionSocket sock) = N.close sock
           backendClose (ConnectionStream h) = hClose h
+
+          ignoreIOExc action = action `E.catch` \(_ :: E.IOException) -> return ()
 
 -- | Activate secure layer using the parameters specified.
 --
