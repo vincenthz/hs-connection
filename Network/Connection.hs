@@ -14,7 +14,7 @@ module Network.Connection
     (
     -- * Type for a connection
       Connection
-    , connectionID
+    , ConnectionID
     , ConnectionParams(..)
     , TLSSettings(..)
     , ProxySettings(..)
@@ -35,6 +35,9 @@ module Network.Connection
     , connectTo
     , connectionClose
 
+    -- * Connection information
+    , connectionID
+
     -- * Sending and receiving data
     , connectionGet
     , connectionGetExact
@@ -47,6 +50,7 @@ module Network.Connection
     -- * TLS related operation
     , connectionSetSecure
     , connectionIsSecure
+    , defaultClientParams
     ) where
 
 import Control.Applicative
@@ -109,25 +113,52 @@ connectionSessionManager mvar = TLS.SessionManager
 initConnectionContext :: IO ConnectionContext
 initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 
--- | Create a final TLS 'ClientParams' according to the destination and the
--- TLSSettings.
-makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
-makeTLSParams cg cid ts@(TLSSettingsSimple {}) =
+-- | A default function for 'TLSSettingsLambda', equivalent to
+-- @'TLSSettingsSimple' False False True@.
+defaultClientParams :: ConnectionContext -> ConnectionID -> TLS.ClientParams
+defaultClientParams cg cid =
     (TLS.defaultParamsClient (fst cid) portString)
-        { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
+        { TLS.clientSupported = def { TLS.supportedCiphers        = TLS.ciphersuite_all
+                                    , TLS.supportedHashSignatures = hashSignatures
+                                    }
         , TLS.clientShared    = def
             { TLS.sharedCAStore         = globalCertificateStore cg
-            , TLS.sharedValidationCache = validationCache
             -- , TLS.sharedSessionManager  = connectionSessionManager
             }
         }
-  where validationCache
-            | settingDisableCertificateValidation ts =
-                TLS.ValidationCache (\_ _ _ -> return TLS.ValidationCachePass)
-                                    (\_ _ _ -> return ())
-            | otherwise = def
-        portString = BC.pack $ show $ snd cid
-makeTLSParams _ cid (TLSSettings p) =
+  where portString = BC.pack $ show $ snd cid
+
+        -- override default hash and signature algorithms in order to enable
+        -- ECDSA here, until this is enabled directly in tls
+        -- (see vincenthz/hs-tls#152)
+        hashSignatures =
+            [ (TLS.HashSHA512, TLS.SignatureRSA)
+            , (TLS.HashSHA384, TLS.SignatureRSA)
+            , (TLS.HashSHA256, TLS.SignatureRSA)
+            , (TLS.HashSHA224, TLS.SignatureRSA)
+            , (TLS.HashSHA1,   TLS.SignatureRSA)
+            , (TLS.HashSHA1,   TLS.SignatureDSS)
+            -- ECDSA + SEC_p256r1 + SHA-384/512 need cryptonite >= 0.20
+            , (TLS.HashSHA256, TLS.SignatureECDSA)
+            , (TLS.HashSHA224, TLS.SignatureECDSA)
+            , (TLS.HashSHA1,   TLS.SignatureECDSA)
+            ]
+
+-- | Create a final TLS 'ClientParams' according to the destination and the
+-- TLSSettings.
+makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
+makeTLSParams cg cid ts@(TLSSettingsSimple {})
+    | settingDisableCertificateValidation ts = dfltParams { TLS.clientShared = dcvShared }
+    | otherwise                              = dfltParams
+  where dfltParams = defaultClientParams cg cid
+        dcvShared = (TLS.clientShared dfltParams)
+                        { TLS.sharedValidationCache = alwaysPass
+                        }
+        alwaysPass =
+            TLS.ValidationCache (\_ _ _ -> return TLS.ValidationCachePass)
+                                (\_ _ _ -> return ())
+makeTLSParams cg cid (TLSSettingsLambda lambda) = lambda cg cid
+makeTLSParams _  cid (TLSSettings p) =
     p { TLS.clientServerIdentification = (fst cid, portString) }
  where portString = BC.pack $ show $ snd cid
 

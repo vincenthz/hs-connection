@@ -2,7 +2,7 @@
 import qualified Data.ByteString as B
 import Data.ByteString.Char8 ()
 import Network.Connection
-import Data.Default
+import Data.Default.Class
 
 readHeader con = do
     l <- connectionGetLine 1024 con
