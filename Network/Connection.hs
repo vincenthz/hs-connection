@@ -27,7 +27,7 @@ module Network.Connection
 
     -- * Library initialization
     , initConnectionContext
-    , ConnectionContext
+    , ConnectionContext(..)
 
     -- * Connection operation
     , connectFromHandle
