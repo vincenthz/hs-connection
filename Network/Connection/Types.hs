@@ -37,9 +37,10 @@ data ConnectionBackend = ConnectionStream Handle
 -- If you need to connect through a SOCKS, you should make sure
 -- connectionUseSocks is correctly set.
 data ConnectionParams = ConnectionParams
-    { connectionHostname   :: HostName           -- ^ host name to connect to.
-    , connectionPort       :: PortNumber         -- ^ port number to connect to.
-    , connectionUseSecure  :: Maybe TLSSettings  -- ^ optional TLS parameters.
+    { connectionHostname   :: HostName            -- ^ host name to connect to.
+    , connectionPort       :: PortNumber          -- ^ port number to connect to.
+    , connectionUseAddress :: Maybe String        -- ^ optional use specific IP.
+    , connectionUseSecure  :: Maybe TLSSettings   -- ^ optional TLS parameters.
     , connectionUseSocks   :: Maybe ProxySettings -- ^ optional Proxy/Socks configuration.
     }
 

@@ -8,16 +8,17 @@ readHeader con = do
     l <- connectionGetLine 1024 con
     putStrLn $ show l
     if B.isPrefixOf "250 " l
-        then return ()  
+        then return ()
         else readHeader con
-        
+
 main = do
     ctx <- initConnectionContext
     con <- connectTo ctx $ ConnectionParams
-                            { connectionHostname  = "my.smtp.server"
-                            , connectionPort      = 25
-                            , connectionUseSecure = Nothing
-                            , connectionUseSocks  = Nothing
+                            { connectionHostname   = "my.smtp.server"
+                            , connectionPort       = 25
+                            , connectionUseAddress = Nothing
+                            , connectionUseSecure  = Nothing
+                            , connectionUseSocks   = Nothing
                             }
 
     -- | read the server banner
