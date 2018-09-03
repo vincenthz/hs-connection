@@ -69,7 +69,7 @@ data TLSSettings
              { settingDisableCertificateValidation :: Bool -- ^ Disable certificate verification completely,
                                                            --   this make TLS/SSL vulnerable to a MITM attack.
                                                            --   not recommended to use, but for testing.
-             , settingsSupportedCiphers            :: [TLS.Cipher]
+             , settingSupportedCiphers             :: [TLS.Cipher]
                                                            -- ^ Default 'False'.  If this is 'True', client
                                                            --   allows old and unsafe crypto algorithms.
              , settingDisableSession               :: Bool -- ^ Disable session management. TLS/SSL connections
