@@ -116,7 +116,7 @@ makeTLSParams cg cid (TLSSettingsSimple v s n) =
   makeTLSParams cg cid (TLSSettingsSimpleWithCiphers v TLS.ciphersuite_default s n)
 makeTLSParams cg cid ts@(TLSSettingsSimpleWithCiphers {}) =
     (TLS.defaultParamsClient (fst cid) portString)
-        { TLS.clientSupported = def { TLS.supportedCiphers = settingsSupportedCiphers ts }
+        { TLS.clientSupported = def { TLS.supportedCiphers = settingSupportedCiphers ts }
         , TLS.clientShared    = def
             { TLS.sharedCAStore         = globalCertificateStore cg
             , TLS.sharedValidationCache = validationCache
