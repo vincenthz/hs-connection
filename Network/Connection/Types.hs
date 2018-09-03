@@ -81,7 +81,7 @@ data TLSSettings
     deriving (Show)
 
 instance Default TLSSettings where
-    def = TLSSettingsSimple False TLS.ciphersuite_all False False
+    def = TLSSettingsSimple False TLS.ciphersuite_default False False
 
 type ConnectionID = (HostName, PortNumber)
 
