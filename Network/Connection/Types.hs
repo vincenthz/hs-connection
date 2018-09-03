@@ -19,6 +19,7 @@ import Data.ByteString (ByteString)
 import Network.BSD (HostName)
 import Network.Socket (PortNumber, Socket)
 import qualified Network.TLS as TLS
+import qualified Network.TLS.Extra.Cipher as TLS
 
 import System.IO (Handle)
 
@@ -68,6 +69,18 @@ data TLSSettings
              { settingDisableCertificateValidation :: Bool -- ^ Disable certificate verification completely,
                                                            --   this make TLS/SSL vulnerable to a MITM attack.
                                                            --   not recommended to use, but for testing.
+             , settingDisableSession               :: Bool -- ^ Disable session management. TLS/SSL connections
+                                                           --   will always re-established their context.
+                                                           --   Not Implemented Yet.
+             , settingUseServerName                :: Bool -- ^ Use server name extension. Not Implemented Yet.
+             } -- ^ Simple TLS settings. recommended to use.
+    | TLSSettingsSimpleWithCiphers
+             { settingDisableCertificateValidation :: Bool -- ^ Disable certificate verification completely,
+                                                           --   this make TLS/SSL vulnerable to a MITM attack.
+                                                           --   not recommended to use, but for testing.
+             , settingsSupportedCiphers            :: [TLS.Cipher]
+                                                           -- ^ Default 'False'.  If this is 'True', client
+                                                           --   allows old and unsafe crypto algorithms.
              , settingDisableSession               :: Bool -- ^ Disable session management. TLS/SSL connections
                                                            --   will always re-established their context.
                                                            --   Not Implemented Yet.

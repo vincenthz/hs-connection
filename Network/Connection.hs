@@ -112,9 +112,11 @@ initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 -- | Create a final TLS 'ClientParams' according to the destination and the
 -- TLSSettings.
 makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
-makeTLSParams cg cid ts@(TLSSettingsSimple {}) =
+makeTLSParams cg cid (TLSSettingsSimple v s n) =
+  makeTLSParams cg cid (TLSSettingsSimpleWithCiphers v TLS.ciphersuite_default s n)
+makeTLSParams cg cid ts@(TLSSettingsSimpleWithCiphers {}) =
     (TLS.defaultParamsClient (fst cid) portString)
-        { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
+        { TLS.clientSupported = def { TLS.supportedCiphers = settingsSupportedCiphers ts }
         , TLS.clientShared    = def
             { TLS.sharedCAStore         = globalCertificateStore cg
             , TLS.sharedValidationCache = validationCache
@@ -205,7 +207,7 @@ connectTo cg cParams = do
             let serv = case portid of
                             N.Service serv -> serv
                             N.PortNumber n -> show n
-                            _              -> error "cannot resolve service" 
+                            _              -> error "cannot resolve service"
             proto <- getProtocolNumber "tcp"
             let hints = defaultHints { addrFlags = [AI_ADDRCONFIG]
                                      , addrProtocol = proto
