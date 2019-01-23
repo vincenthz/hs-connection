@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
 -- |
 -- Module      : Network.Connection
 -- License     : BSD-style
@@ -60,8 +61,12 @@ import qualified Network.TLS.Extra as TLS
 
 import System.X509 (getSystemCertificateStore)
 
+#if MIN_VERSION_network (3,0,0)
+import Network.Socks5 as N
+#else
 import Network.Socks5
 import qualified Network as N
+#endif
 import Network.Socket
 import Network.BSD (getProtocolNumber)
 import qualified Network.Socket as N (close)
