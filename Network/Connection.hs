@@ -60,7 +60,7 @@ import qualified Network.TLS.Extra as TLS
 
 import System.X509 (getSystemCertificateStore)
 
-import Network.Socks5
+import Network.Socks5 (socksConnectTo')
 import qualified Network as N
 import Network.Socket
 import Network.BSD (getProtocolNumber)
