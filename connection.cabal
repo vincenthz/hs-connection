@@ -17,14 +17,14 @@ Build-Type:          Simple
 Category:            Network
 stability:           experimental
 Cabal-Version:       >=1.6
-Homepage:            http://github.com/vincenthz/hs-connection
+Homepage:            https://github.com/vincenthz/hs-connection
 extra-source-files:  README.md
                      CHANGELOG.md
 
 Library
   Build-Depends:     base >= 3 && < 5
+                   , basement
                    , bytestring
-                   , byteable
                    , containers
                    , data-default-class
                    , network >= 2.3
