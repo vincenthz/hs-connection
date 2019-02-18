@@ -22,10 +22,11 @@ byte, receive a single byte, print it, and close the connection:
     main = do
         ctx <- initConnectionContext
         con <- connectTo ctx $ ConnectionParams
-                                  { connectionHostname  = "www.example.com"
-                                  , connectionPort      = 4567
-                                  , connectionUseSecure = Nothing
-                                  , connectionUseSocks  = Nothing
+                                  { connectionHostname   = "www.example.com"
+                                  , connectionPort       = 4567
+                                  , connectionUseAddress = Nothing
+                                  , connectionUseSecure  = Nothing
+                                  , connectionUseSocks   = Nothing
                                   }
         connectionPut con (B.singleton 0xa)
         r <- connectionGet con 1
@@ -37,19 +38,21 @@ parameter, for example connecting to the same host, but using a socks
 proxy at localhost:1080:
 
     con <- connectTo ctx $ ConnectionParams
-                           { connectionHostname  = "www.example.com"
-                           , connectionPort      = 4567
-                           , connectionUseSecure = Nothing
-                           , connectionUseSocks  = Just $ SockSettingsSimple "localhost" 1080
+                           { connectionHostname   = "www.example.com"
+                           , connectionPort       = 4567
+                           , connectionUseAddress = Nothing
+                           , connectionUseSecure  = Nothing
+                           , connectionUseSocks   = Just $ SockSettingsSimple "localhost" 1080
                            }
 
 Connecting to a SSL style socket is equally easy, and need to set the UseSecure fields in ConnectionParams:
 
     con <- connectTo ctx $ ConnectionParams
-                           { connectionHostname  = "www.example.com"
-                           , connectionPort      = 4567
-                           , connectionUseSecure = Just def
-                           , connectionUseSocks  = Nothing
+                           { connectionHostname   = "www.example.com"
+                           , connectionPort       = 4567
+                           , connectionUseAddress = Nothing
+                           , connectionUseSecure  = Just def
+                           , connectionUseSocks   = Nothing
                            }
 
 And finally, you can start TLS in the middle of an insecure connection. This is great for
@@ -64,10 +67,11 @@ protocol using STARTTLS (e.g. IMAP, SMTP):
     main = do
         ctx <- initConnectionContext
         con <- connectTo ctx $ ConnectionParams
-                                  { connectionHostname  = "www.example.com"
-                                  , connectionPort      = 4567
-                                  , connectionUseSecure = Nothing
-                                  , connectionUseSocks  = Nothing
+                                  { connectionHostname   = "www.example.com"
+                                  , connectionPort       = 4567
+                                  , connectionUseAddress = Nothing
+                                  , connectionUseSecure  = Nothing
+                                  , connectionUseSocks   = Nothing
                                   }
         -- talk to the other side with no TLS: says hello and starttls
         connectionPut con "HELLO\n"

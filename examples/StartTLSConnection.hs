@@ -7,18 +7,19 @@ import Data.Default
 main = do
     ctx <- initConnectionContext
     con <- connectTo ctx $ ConnectionParams
-                              { connectionHostname  = "www.example.com"
-                              , connectionPort      = 4567
-                              , connectionUseSecure = Nothing
-                              , connectionUseSocks  = Nothing
+                              { connectionHostname   = "www.example.com"
+                              , connectionPort       = 4567
+                              , connectionUseAddress = Nothing
+                              , connectionUseSecure  = Nothing
+                              , connectionUseSocks   = Nothing
                               }
-    -- talk to the other side, says hello and starttls 
+    -- talk to the other side, says hello and starttls
     connectionPut con "HELLO\n"
     connectionPut con "STARTTLS\n"
 
     -- switch to TLS
     connectionSetSecure ctx con def
 
-    -- the connection is now on using TLS, we can send secret for examplek
+    -- the connection is now on using TLS, we can send secret for example
     connectionPut con "PASSWORD 123\n"
     connectionClose con

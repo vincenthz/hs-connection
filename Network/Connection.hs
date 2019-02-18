@@ -73,6 +73,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as L
+import Data.Maybe (fromMaybe)
 
 import System.Environment
 import System.Timeout
@@ -172,13 +173,13 @@ connectTo :: ConnectionContext -- ^ The global context of this connection.
           -> IO Connection     -- ^ The new established connection on success.
 connectTo cg cParams = do
     conFct <- getConFct (connectionUseSocks cParams)
-    let doConnect = conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
+    let doConnect = conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams) (connectionUseAddress cParams)
     E.bracketOnError doConnect N.close $ \h->
         connectFromSocket cg h cParams
   where
         getConFct Nothing                            = return resolve'
-        getConFct (Just (OtherProxy h p))            = return $ \_ _ -> resolve' h (N.PortNumber p)
-        getConFct (Just (SockSettingsSimple h p))    = return $ socksConnectTo' h (N.PortNumber p)
+        getConFct (Just (OtherProxy h p))            = return $ \_ _ _ -> resolve' h (N.PortNumber p) Nothing
+        getConFct (Just (SockSettingsSimple h p))    = return $ \dh dp dip -> socksConnectTo' h (N.PortNumber p) (fromMaybe dh dip) dp
         getConFct (Just (SockSettingsEnvironment v)) = do
             -- if we can't get the environment variable or that the variable cannot be parsed
             -- we connect directly.
@@ -189,7 +190,7 @@ connectTo cg cParams = do
                 Right var                 ->
                     case parseSocks var of
                         Nothing             -> return resolve'
-                        Just (sHost, sPort) -> return $ socksConnectTo' sHost (N.PortNumber $ fromIntegral (sPort :: Int))
+                        Just (sHost, sPort) -> return $ \dh dp dip -> socksConnectTo' sHost (N.PortNumber $ fromIntegral (sPort :: Int)) (fromMaybe dh dip) dp
 
         -- Try to parse "host:port" or "host"
         parseSocks s =
@@ -201,16 +202,16 @@ connectTo cg cParams = do
                         _            -> Nothing
                 _                  -> Nothing
 
-        resolve' host portid = do
+        resolve' host portid dip = do
             let serv = case portid of
                             N.Service serv -> serv
                             N.PortNumber n -> show n
-                            _              -> error "cannot resolve service" 
+                            _              -> error "cannot resolve service"
             proto <- getProtocolNumber "tcp"
             let hints = defaultHints { addrFlags = [AI_ADDRCONFIG]
                                      , addrProtocol = proto
                                      , addrSocketType = Stream }
-            addrs <- getAddrInfo (Just hints) (Just host) (Just serv)
+            addrs <- getAddrInfo (Just hints) (Just $ fromMaybe host dip) (Just serv)
             firstSuccessful $ map tryToConnect addrs
           where
             tryToConnect addr =
