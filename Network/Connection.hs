@@ -60,11 +60,8 @@ import qualified Network.TLS.Extra as TLS
 
 import System.X509 (getSystemCertificateStore)
 
-import Network.Socks5 (socksConnectTo')
-import qualified Network as N
+import Network.Socks5 (defaultSocksConf, socksConnectWithSocket, SocksAddress(..), SocksHostAddress(..))
 import Network.Socket
-import Network.BSD (getProtocolNumber)
-import qualified Network.Socket as N (close)
 import qualified Network.Socket.ByteString as N
 
 import Data.Default.Class
@@ -171,63 +168,77 @@ connectTo :: ConnectionContext -- ^ The global context of this connection.
           -> ConnectionParams  -- ^ The parameters for this connection (where to connect, and such).
           -> IO Connection     -- ^ The new established connection on success.
 connectTo cg cParams = do
-    conFct <- getConFct (connectionUseSocks cParams)
-    let doConnect = conFct (connectionHostname cParams) (N.PortNumber $ connectionPort cParams)
-    E.bracketOnError doConnect N.close $ \h->
+    let conFct = doConnect (connectionUseSocks cParams)
+                           (connectionHostname cParams)
+                           (connectionPort cParams)
+    E.bracketOnError conFct (close . fst) $ \(h, _) ->
         connectFromSocket cg h cParams
   where
-        getConFct Nothing                            = return resolve'
-        getConFct (Just (OtherProxy h p))            = return $ \_ _ -> resolve' h (N.PortNumber p)
-        getConFct (Just (SockSettingsSimple h p))    = return $ socksConnectTo' h (N.PortNumber p)
-        getConFct (Just (SockSettingsEnvironment v)) = do
-            -- if we can't get the environment variable or that the variable cannot be parsed
-            -- we connect directly.
-            let name = maybe "SOCKS_SERVER" id v
-            evar <- E.try (getEnv name)
-            case evar of
-                Left (_ :: E.IOException) -> return resolve'
-                Right var                 ->
-                    case parseSocks var of
-                        Nothing             -> return resolve'
-                        Just (sHost, sPort) -> return $ socksConnectTo' sHost (N.PortNumber $ fromIntegral (sPort :: Int))
+    sockConnect sockHost sockPort h p = do
+        (sockServ, servAddr) <- resolve' sockHost sockPort
+        let sockConf = defaultSocksConf servAddr
+        let destAddr = SocksAddress (SocksAddrDomainName $ BC.pack h) p
+        (dest, _) <- socksConnectWithSocket sockServ sockConf destAddr
+        case dest of
+            SocksAddrIPV4 h4 -> return (sockServ, SockAddrInet p h4)
+            SocksAddrIPV6 h6 -> return (sockServ, SockAddrInet6 p 0 h6 0)
+            SocksAddrDomainName _ -> error "internal error: socks connect return a resolved address as domain name"
 
-        -- Try to parse "host:port" or "host"
-        parseSocks s =
-            case break (== ':') s of
-                (sHost, "")        -> Just (sHost, 1080)
-                (sHost, ':':portS) ->
-                    case reads portS of
-                        [(sPort,"")] -> Just (sHost, sPort)
-                        _            -> Nothing
-                _                  -> Nothing
 
-        resolve' host portid = do
-            let serv = case portid of
-                            N.Service serv -> serv
-                            N.PortNumber n -> show n
-                            _              -> error "cannot resolve service" 
-            proto <- getProtocolNumber "tcp"
-            let hints = defaultHints { addrFlags = [AI_ADDRCONFIG]
-                                     , addrProtocol = proto
-                                     , addrSocketType = Stream }
-            addrs <- getAddrInfo (Just hints) (Just host) (Just serv)
-            firstSuccessful $ map tryToConnect addrs
+    doConnect proxy h p =
+        case proxy of
+            Nothing                 -> resolve' h p
+            Just (OtherProxy proxyHost proxyPort) -> resolve' proxyHost proxyPort
+            Just (SockSettingsSimple sockHost sockPort) ->
+                sockConnect sockHost sockPort h p
+            Just (SockSettingsEnvironment envName) -> do
+                -- if we can't get the environment variable or that the string cannot be parsed
+                -- we connect directly.
+                let name = maybe "SOCKS_SERVER" id envName
+                evar <- E.try (getEnv name)
+                case evar of
+                    Left (_ :: E.IOException) -> resolve' h p
+                    Right var                 ->
+                        case parseSocks var of
+                            Nothing                   -> resolve' h p
+                            Just (sockHost, sockPort) -> sockConnect sockHost sockPort h p
+
+    -- Try to parse "host:port" or "host"
+    -- if port is ommited then the default SOCKS port (1080) is assumed
+    parseSocks :: String -> Maybe (String, PortNumber)
+    parseSocks s =
+        case break (== ':') s of
+            (sHost, "")        -> Just (sHost, 1080)
+            (sHost, ':':portS) ->
+                case reads portS of
+                    [(sPort,"")] -> Just (sHost, sPort)
+                    _            -> Nothing
+            _                  -> Nothing
+
+    -- Try to resolve the host/port into an address (zero to many of them), then
+    -- try to connect from the first address to the last, returning the first one that
+    -- succeed
+    resolve' :: String -> PortNumber -> IO (Socket, SockAddr)
+    resolve' host port = do
+        let hints = defaultHints { addrFlags = [AI_ADDRCONFIG], addrSocketType = Stream }
+        addrs <- getAddrInfo (Just hints) (Just host) (Just $ show port)
+        firstSuccessful $ map tryToConnect addrs
+      where
+        tryToConnect addr =
+            E.bracketOnError
+                (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
+                (close)
+                (\sock -> connect sock (addrAddress addr) >> return (sock, addrAddress addr))
+        firstSuccessful = go []
           where
-            tryToConnect addr =
-                E.bracketOnError
-                    (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
-                    (N.close)
-                    (\sock -> connect sock (addrAddress addr) >> return sock)
-            firstSuccessful = go []
-              where
-                go :: [E.IOException] -> [IO a] -> IO a
-                go []      [] = E.throwIO $ HostNotResolved host
-                go l@(_:_) [] = E.throwIO $ HostCannotConnect host l
-                go acc     (act:followingActs) = do
-                    er <- E.try act
-                    case er of
-                        Left err -> go (err:acc) followingActs
-                        Right r  -> return r
+            go :: [E.IOException] -> [IO a] -> IO a
+            go []      [] = E.throwIO $ HostNotResolved host
+            go l@(_:_) [] = E.throwIO $ HostCannotConnect host l
+            go acc     (act:followingActs) = do
+                er <- E.try act
+                case er of
+                    Left err -> go (err:acc) followingActs
+                    Right r  -> return r
 
 -- | Put a block of data in the connection.
 connectionPut :: Connection -> ByteString -> IO ()
@@ -369,7 +380,7 @@ throwEOF conn loc =
 connectionClose :: Connection -> IO ()
 connectionClose = withBackend backendClose
     where backendClose (ConnectionTLS ctx)  = ignoreIOExc (TLS.bye ctx) `E.finally` TLS.contextClose ctx
-          backendClose (ConnectionSocket sock) = N.close sock
+          backendClose (ConnectionSocket sock) = close sock
           backendClose (ConnectionStream h) = hClose h
 
           ignoreIOExc action = action `E.catch` \(_ :: E.IOException) -> return ()

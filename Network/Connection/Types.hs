@@ -16,7 +16,6 @@ import Data.Default.Class
 import Data.X509.CertificateStore
 import Data.ByteString (ByteString)
 
-import Network.BSD (HostName)
 import Network.Socket (PortNumber, Socket)
 import qualified Network.TLS as TLS
 
@@ -26,6 +25,10 @@ import System.IO (Handle)
 data ConnectionBackend = ConnectionStream Handle
                        | ConnectionSocket Socket
                        | ConnectionTLS TLS.Context
+
+
+-- | Hostname This could either be a name string (punycode encoded) or an ipv4/ipv6
+type HostName = String
 
 -- | Connection Parameters to establish a Connection.
 --

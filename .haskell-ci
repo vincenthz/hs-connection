@@ -15,9 +15,9 @@ compiler: ghc-8.6 lts-13.5
 # recognized simple options: nohaddock allow-newer allowed-failure
 # recognized keys: tests=no benchs=no
 # kvs options: flag=pkg:flagname extradep=package-version gitdep=name
-build: ghc-8.6 os=linux,osx,windows
-build: ghc-8.4
-build: ghc-8.2
+build: ghc-8.6 os=linux,osx,windows extradep=socks-0.6.0
+build: ghc-8.4 extradep=socks-0.6.0
+build: ghc-8.2 extradep=socks-0.6.0
 #build: ghc-8.0
 
 # packages
