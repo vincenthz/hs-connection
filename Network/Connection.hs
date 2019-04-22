@@ -47,9 +47,9 @@ module Network.Connection
     -- * TLS related operation
     , connectionSetSecure
     , connectionIsSecure
+    , connectionSessionManager
     ) where
 
-import Control.Applicative
 import Control.Concurrent.MVar
 import Control.Monad (join)
 import qualified Control.Exception as E
@@ -111,7 +111,7 @@ initConnectionContext = ConnectionContext <$> getSystemCertificateStore
 makeTLSParams :: ConnectionContext -> ConnectionID -> TLSSettings -> TLS.ClientParams
 makeTLSParams cg cid ts@(TLSSettingsSimple {}) =
     (TLS.defaultParamsClient (fst cid) portString)
-        { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_all }
+        { TLS.clientSupported = def { TLS.supportedCiphers = TLS.ciphersuite_default }
         , TLS.clientShared    = def
             { TLS.sharedCAStore         = globalCertificateStore cg
             , TLS.sharedValidationCache = validationCache
