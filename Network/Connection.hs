@@ -221,15 +221,14 @@ connectTo cg cParams = do
                 return (sHost, sPort, Nothing)
             (sUsernamePassword, '@':sHostPort) -> do
                 (sHost, sPort) <- parseSocksHostPort sHostPort
-                return (sHost, sPort, (parseSocksUserNamePassword sUsernamePassword))
+                return (sHost, sPort, Just (parseSocksUserNamePassword sUsernamePassword))
             _                                  -> Nothing
 
     -- Try to parse "username:password"
     -- password can be an empty string, "username:" and "username" produce the same result
-    parseSocksUserNamePassword :: String -> Maybe(SocksAuthUsername)
-    parseSocksUserNamePassword s =
-        case break (== ':') s of
-            (sUsername, sPassword) -> Just (SocksAuthUsername (BC.pack sUsername) (BC.pack sPassword))
+    parseSocksUserNamePassword :: String -> SocksAuthUsername
+    parseSocksUserNamePassword s = SocksAuthUsername (BC.pack sUsername) (BC.pack sPassword)
+        where (sUsername, sPassword) = break (== ':') s
 
     -- Try to parse "host:port" or "host"
     -- if port is ommited then the default SOCKS port (1080) is assumed
