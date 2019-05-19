@@ -40,7 +40,18 @@ proxy at localhost:1080:
                            { connectionHostname  = "www.example.com"
                            , connectionPort      = 4567
                            , connectionUseSecure = Nothing
-                           , connectionUseSocks  = Just $ SockSettingsSimple "localhost" 1080
+                           , connectionUseSocks  = Just $ SockSettingsSimple "localhost" 1080 
+                           }
+
+Socks5 username authentication is also supported:
+
+    import qualified Network.Socks5 as Socks5
+
+    con <- connectTo ctx $ ConnectionParams
+                           { connectionHostname  = "www.example.com"
+                           , connectionPort      = 4567
+                           , connectionUseSecure = Nothing
+                           , connectionUseSocks  = Just $ SockSettingsAuth localhost" 1080 (Socks5.SocksAuthUsername "username" "password")
                            }
 
 Connecting to a SSL style socket is equally easy, and need to set the UseSecure fields in ConnectionParams:
