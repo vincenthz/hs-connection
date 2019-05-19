@@ -18,6 +18,7 @@ import Data.ByteString (ByteString)
 
 import Network.Socket (PortNumber, Socket)
 import qualified Network.TLS as TLS
+import qualified Network.Socks5 as Socks5
 
 import System.IO (Handle)
 
@@ -56,6 +57,7 @@ data ConnectionParams = ConnectionParams
 -- socks password, or any sort of other authentications is not yet implemented.
 data ProxySettings =
       SockSettingsSimple HostName PortNumber
+    | SockSettingsAuth HostName PortNumber Socks5.SocksAuthUsername
     | SockSettingsEnvironment (Maybe String)
     | OtherProxy HostName PortNumber
 

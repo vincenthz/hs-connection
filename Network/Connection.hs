@@ -60,7 +60,14 @@ import qualified Network.TLS.Extra as TLS
 
 import System.X509 (getSystemCertificateStore)
 
-import Network.Socks5 (defaultSocksConf, socksConnectWithSocket, SocksAddress(..), SocksHostAddress(..))
+import Network.Socks5 (
+      socksConnectWithSocket
+    , SocksAddress(..)
+    , SocksHostAddress(..)
+    , SocksConf(..)
+    , SocksAuthUsername(..)
+    , SocksVersion(..)
+    )
 import Network.Socket
 import qualified Network.Socket.ByteString as N
 
@@ -174,9 +181,9 @@ connectTo cg cParams = do
     E.bracketOnError conFct (close . fst) $ \(h, _) ->
         connectFromSocket cg h cParams
   where
-    sockConnect sockHost sockPort h p = do
+    sockConnect sockHost sockPort sockAuth h p = do
         (sockServ, servAddr) <- resolve' sockHost sockPort
-        let sockConf = defaultSocksConf servAddr
+        let sockConf = SocksConf servAddr SocksVer5 sockAuth
         let destAddr = SocksAddress (SocksAddrDomainName $ BC.pack h) p
         (dest, _) <- socksConnectWithSocket sockServ sockConf destAddr
         case dest of
@@ -184,13 +191,14 @@ connectTo cg cParams = do
             SocksAddrIPV6 h6 -> return (sockServ, SockAddrInet6 p 0 h6 0)
             SocksAddrDomainName _ -> error "internal error: socks connect return a resolved address as domain name"
 
-
     doConnect proxy h p =
         case proxy of
             Nothing                 -> resolve' h p
             Just (OtherProxy proxyHost proxyPort) -> resolve' proxyHost proxyPort
-            Just (SockSettingsSimple sockHost sockPort) ->
-                sockConnect sockHost sockPort h p
+            Just (SockSettingsSimple sockHost sockPort) -> do
+                sockConnect sockHost sockPort Nothing h p
+            Just (SockSettingsAuth sockHost sockPort sockAuth) -> do
+                sockConnect sockHost sockPort (Just sockAuth) h p
             Just (SockSettingsEnvironment envName) -> do
                 -- if we can't get the environment variable or that the string cannot be parsed
                 -- we connect directly.
@@ -200,13 +208,33 @@ connectTo cg cParams = do
                     Left (_ :: E.IOException) -> resolve' h p
                     Right var                 ->
                         case parseSocks var of
-                            Nothing                   -> resolve' h p
-                            Just (sockHost, sockPort) -> sockConnect sockHost sockPort h p
+                            Nothing                             -> resolve' h p
+                            Just (sockHost, sockPort, sockAuth) -> sockConnect sockHost sockPort sockAuth h p
+
+    -- Try to parse "[username[:password]@]host[:port]"
+    -- if port is ommited then the default SOCKS port (1080) is assumed
+    parseSocks :: String -> Maybe (String, PortNumber, Maybe(SocksAuthUsername))
+    parseSocks s = 
+        case break (== '@') s of
+            (sHostPort, "")                    -> do
+                (sHost, sPort) <- parseSocksHostPort sHostPort
+                return (sHost, sPort, Nothing)
+            (sUsernamePassword, '@':sHostPort) -> do
+                (sHost, sPort) <- parseSocksHostPort sHostPort
+                return (sHost, sPort, (parseSocksUserNamePassword sUsernamePassword))
+            _                                  -> Nothing
+
+    -- Try to parse "username:password"
+    -- password can be an empty string, "username:" and "username" produce the same result
+    parseSocksUserNamePassword :: String -> Maybe(SocksAuthUsername)
+    parseSocksUserNamePassword s =
+        case break (== ':') s of
+            (sUsername, sPassword) -> Just (SocksAuthUsername (BC.pack sUsername) (BC.pack sPassword))
 
     -- Try to parse "host:port" or "host"
     -- if port is ommited then the default SOCKS port (1080) is assumed
-    parseSocks :: String -> Maybe (String, PortNumber)
-    parseSocks s =
+    parseSocksHostPort :: String -> Maybe (String, PortNumber)
+    parseSocksHostPort s =
         case break (== ':') s of
             (sHost, "")        -> Just (sHost, 1080)
             (sHost, ':':portS) ->
