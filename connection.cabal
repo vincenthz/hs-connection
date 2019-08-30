@@ -27,7 +27,7 @@ Library
                    , bytestring
                    , containers
                    , data-default-class
-                   , network >= 2.6
+                   , network >= 2.6.3
                    , tls >= 1.4
                    , socks >= 0.6
                    , x509 >= 1.5
