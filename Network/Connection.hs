@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -64,6 +65,7 @@ import Network.Socks5 (defaultSocksConf, socksConnectWithSocket, SocksAddress(..
 import Network.Socket
 import qualified Network.Socket.ByteString as N
 
+import Data.Tuple (swap)
 import Data.Default.Class
 import Data.Data
 import Data.ByteString (ByteString)
@@ -100,6 +102,10 @@ connectionSessionManager mvar = TLS.SessionManager
     , TLS.sessionEstablish  = \sessionID sessionData ->
                                modifyMVar_ mvar (return . M.insert sessionID sessionData)
     , TLS.sessionInvalidate = \sessionID -> modifyMVar_ mvar (return . M.delete sessionID)
+#if MIN_VERSION_tls(1,5,0)
+    , TLS.sessionResumeOnlyOnce = \sessionID ->
+         modifyMVar mvar (pure . swap . M.updateLookupWithKey (\_ _ -> Nothing) sessionID)
+#endif
     }
 
 -- | Initialize the library with shared parameters between connection.
