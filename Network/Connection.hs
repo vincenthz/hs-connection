@@ -226,7 +226,7 @@ connectTo cg cParams = do
     -- succeed
     resolve' :: String -> PortNumber -> IO (Socket, SockAddr)
     resolve' host port = do
-        let hints = defaultHints { addrFlags = [AI_ADDRCONFIG], addrSocketType = Stream }
+        let hints = defaultHints { addrSocketType = Stream }
         addrs <- getAddrInfo (Just hints) (Just host) (Just $ show port)
         firstSuccessful $ map tryToConnect addrs
       where
