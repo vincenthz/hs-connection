@@ -29,7 +29,7 @@ Library
                    , containers
                    , data-default-class
                    , network >= 2.6.3
-                   , stm >= 2.4
+                   , stm >= 2.3
                    , tls >= 1.4
                    , socks >= 0.6
                    , x509 >= 1.5
