@@ -23,11 +23,13 @@ extra-source-files:  README.md
 
 Library
   Build-Depends:     base >= 3 && < 5
+                   , async
                    , basement
                    , bytestring
                    , containers
                    , data-default-class
                    , network >= 2.6.3
+                   , stm >= 2.4
                    , tls >= 1.4
                    , socks >= 0.6
                    , x509 >= 1.5

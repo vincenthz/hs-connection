@@ -51,6 +51,9 @@ module Network.Connection
     , connectionSessionManager
     ) where
 
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (withAsync, waitCatch)
+import Control.Concurrent.STM
 import Control.Concurrent.MVar
 import Control.Monad (join)
 import qualified Control.Exception as E
