@@ -52,10 +52,9 @@ module Network.Connection
     ) where
 
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async (withAsync, waitCatch)
-import Control.Concurrent.STM
+import Control.Concurrent.Async (withAsync, forConcurrently)
 import Control.Concurrent.MVar
-import Control.Monad (join)
+import Control.Monad (join, when)
 import qualified Control.Exception as E
 import qualified System.IO.Error as E (mkIOError, eofErrorType, isDoesNotExistError)
 
@@ -68,7 +67,6 @@ import Network.Socks5 (defaultSocksConf, socksConnectWithSocket, SocksAddress(..
 import Network.Socket
 import qualified Network.Socket.ByteString as N
 
-import Data.Tuple (swap)
 import Data.Default.Class
 import Data.Data
 import Data.ByteString (ByteString)
@@ -82,6 +80,8 @@ import System.IO
 import qualified Data.Map as M
 
 import Network.Connection.Types
+import Data.Foldable (for_)
+import Data.Either (lefts)
 
 type Manager = MVar (M.Map TLS.SessionID TLS.SessionData)
 
@@ -230,26 +230,35 @@ connectTo cg cParams = do
     resolve' :: String -> PortNumber -> IO (Socket, SockAddr)
     resolve' host port = do
         let hints = defaultHints { addrFlags = [AI_ADDRCONFIG], addrSocketType = Stream }
-        addrs <- E.catchJust (\e -> if E.isDoesNotExistError e then Just () else Nothing)
+        addresses <- E.catchJust (\e -> if E.isDoesNotExistError e then Just () else Nothing)
                              (getAddrInfo (Just hints) (Just host) (Just $ show port))
-                             (\_ -> pure [])
-        firstSuccessful $ map tryToConnect addrs
+                             (\_ -> pure [])      
+        case addresses of
+                [] -> E.throwIO $ HostNotResolved host
+                _ -> do 
+                    firstAddress <- newEmptyMVar
+                    withAsync (tryAddresses addresses firstAddress) $ \_ ->                
+                                takeMVar firstAddress                   
       where
-        tryToConnect addr =
+        -- https://datatracker.ietf.org/doc/html/rfc8305#section-5
+        connectionAttemptDelay = 250 * 1000    
+
+        tryAddresses addresses firstAddress = do         
+            z <- forConcurrently (zip addresses [0..]) $ \(addr, n) -> do
+                    when (n > 0) $ threadDelay $ n * connectionAttemptDelay        
+                    r <- E.try $! tryAddress addr            
+                    for_ r $ tryPutMVar firstAddress
+                    pure r
+            
+            noSuccess <- isEmptyMVar firstAddress
+            when noSuccess $ E.throwIO $ HostCannotConnect host $ lefts z
+
+        tryAddress addr =         
             E.bracketOnError
                 (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
-                (close)
-                (\sock -> connect sock (addrAddress addr) >> return (sock, addrAddress addr))
-        firstSuccessful = go []
-          where
-            go :: [E.IOException] -> [IO a] -> IO a
-            go []      [] = E.throwIO $ HostNotResolved host
-            go l@(_:_) [] = E.throwIO $ HostCannotConnect host l
-            go acc     (act:followingActs) = do
-                er <- E.try act
-                case er of
-                    Left err -> go (err:acc) followingActs
-                    Right r  -> return r
+                close
+                (\sock -> connect sock (addrAddress addr) >> return (sock, addrAddress addr))                                  
+
 
 -- | Put a block of data in the connection.
 connectionPut :: Connection -> ByteString -> IO ()
