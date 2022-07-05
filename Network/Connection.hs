@@ -54,7 +54,7 @@ module Network.Connection
 import Control.Concurrent.MVar
 import Control.Monad (join)
 import qualified Control.Exception as E
-import qualified System.IO.Error as E (mkIOError, eofErrorType)
+import qualified System.IO.Error as E (mkIOError, eofErrorType, isDoesNotExistError)
 
 import qualified Network.TLS as TLS
 import qualified Network.TLS.Extra as TLS
@@ -227,7 +227,9 @@ connectTo cg cParams = do
     resolve' :: String -> PortNumber -> IO (Socket, SockAddr)
     resolve' host port = do
         let hints = defaultHints { addrFlags = [AI_ADDRCONFIG], addrSocketType = Stream }
-        addrs <- getAddrInfo (Just hints) (Just host) (Just $ show port)
+        addrs <- E.catchJust (\e -> if E.isDoesNotExistError e then Just () else Nothing)
+                             (getAddrInfo (Just hints) (Just host) (Just $ show port))
+                             (\_ -> pure [])
         firstSuccessful $ map tryToConnect addrs
       where
         tryToConnect addr =
