@@ -54,7 +54,7 @@ module Network.Connection
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (withAsync, forConcurrently)
 import Control.Concurrent.MVar
-import Control.Monad (join, when)
+import Control.Monad (join, when, void)
 import qualified Control.Exception as E
 import qualified System.IO.Error as E (mkIOError, eofErrorType, isDoesNotExistError)
 
@@ -80,7 +80,6 @@ import System.IO
 import qualified Data.Map as M
 
 import Network.Connection.Types
-import Data.Foldable (for_)
 import Data.Either (lefts)
 
 type Manager = MVar (M.Map TLS.SessionID TLS.SessionData)
@@ -246,18 +245,17 @@ connectTo cg cParams = do
         tryAddresses addresses firstAddress = do         
             z <- forConcurrently (zip addresses [0..]) $ \(addr, n) -> do
                     when (n > 0) $ threadDelay $ n * connectionAttemptDelay        
-                    r <- E.try $! tryAddress addr            
-                    for_ r $ tryPutMVar firstAddress
-                    pure r
+                    E.try $! E.bracketOnError
+                        (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
+                        close
+                        (\sock -> do 
+                            connect sock (addrAddress addr)
+                            let s = (sock, addrAddress addr) 
+                            void $ tryPutMVar firstAddress s
+                            pure s)                                        
             
             noSuccess <- isEmptyMVar firstAddress
-            when noSuccess $ E.throwIO $ HostCannotConnect host $ lefts z
-
-        tryAddress addr =         
-            E.bracketOnError
-                (socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
-                close
-                (\sock -> connect sock (addrAddress addr) >> return (sock, addrAddress addr))                                  
+            when noSuccess $ E.throwIO $ HostCannotConnect host $ lefts z                              
 
 
 -- | Put a block of data in the connection.
