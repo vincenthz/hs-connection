@@ -67,6 +67,7 @@ import Network.Socks5 (defaultSocksConf, socksConnectWithSocket, SocksAddress(..
 import Network.Socket
 import qualified Network.Socket.ByteString as N
 
+import Data.Tuple (swap)
 import Data.Default.Class
 import Data.Data
 import Data.ByteString (ByteString)
