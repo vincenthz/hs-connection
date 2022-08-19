@@ -45,7 +45,7 @@ module Network.Connection
     , connectionWaitForInput
     , connectionPut
 
-    -- * TLS related operation
+    -- * TLS related operations
     , connectionSetSecure
     , connectionIsSecure
     , connectionSessionManager
@@ -169,7 +169,7 @@ connectFromSocket cg sock p = withSecurity (connectionUseSecure p)
           withSecurity (Just tlsSettings) = tlsEstablish sock (makeTLSParams cg cid tlsSettings) >>= connectionNew cid . ConnectionTLS
           cid = (connectionHostname p, connectionPort p)
 
--- | connect to a destination using the parameter
+-- | Connect to a destination using the parameter
 connectTo :: ConnectionContext -- ^ The global context of this connection.
           -> ConnectionParams  -- ^ The parameters for this connection (where to connect, and such).
           -> IO Connection     -- ^ The new established connection on success.
@@ -210,7 +210,7 @@ connectTo cg cParams = do
                             Just (sockHost, sockPort) -> sockConnect sockHost sockPort h p
 
     -- Try to parse "host:port" or "host"
-    -- if port is ommited then the default SOCKS port (1080) is assumed
+    -- if port is omitted then the default SOCKS port (1080) is assumed
     parseSocks :: String -> Maybe (String, PortNumber)
     parseSocks s =
         case break (== ':') s of
@@ -221,9 +221,9 @@ connectTo cg cParams = do
                     _            -> Nothing
             _                  -> Nothing
 
-    -- Try to resolve the host/port into an address (zero to many of them), then
+    -- Try to resolve the host/port to an address (zero to many of them), then
     -- try to connect from the first address to the last, returning the first one that
-    -- succeed
+    -- succeeds
     resolve' :: String -> PortNumber -> IO (Socket, SockAddr)
     resolve' host port = do
         let hints = defaultHints { addrFlags = [AI_ADDRCONFIG], addrSocketType = Stream }
@@ -334,10 +334,10 @@ connectionGetChunkBase loc conn f =
 --
 -- The actual line returned can be bigger than the limit specified, provided
 -- that the last chunk returned by the underlaying backend contains a LF.
--- In another world only when we need more input and limit is reached that the
+-- Put another way: Only when we need more input and limit is reached that the
 -- LineTooLong exception will be raised.
 --
--- An end of file will be considered as a line terminator too, if line is
+-- An end of file will be considered as a line terminator too, if the line is
 -- not empty.
 connectionGetLine :: Int           -- ^ Maximum number of bytes before raising a LineTooLong exception
                   -> Connection    -- ^ Connection
@@ -347,7 +347,7 @@ connectionGetLine limit conn = more (throwEOF conn loc) 0 id
     loc = "connectionGetLine"
     lineTooLong = E.throwIO LineTooLong
 
-    -- Accumulate chunks using a difference list, and concatenate them
+    -- Accumulate chunks using a difference list and concatenate them
     -- when an end-of-line indicator is reached.
     more eofK !currentSz !dl =
         getChunk (\s -> let len = B.length s
@@ -360,7 +360,7 @@ connectionGetLine limit conn = more (throwEOF conn loc) 0 id
     done :: ([ByteString] -> [ByteString]) -> IO ByteString
     done dl = return $! B.concat $ dl []
 
-    -- Get another chunk, and call one of the continuations
+    -- Get another chunk and call one of the continuations
     getChunk :: (ByteString -> IO r) -- moreK: need more input
              -> (ByteString -> IO r) -- doneK: end of line (line terminator found)
              -> IO r                 -- eofK:  end of file
@@ -393,9 +393,9 @@ connectionClose = withBackend backendClose
 
 -- | Activate secure layer using the parameters specified.
 --
--- This is typically used to negociate a TLS channel on an already
--- establish channel, e.g. supporting a STARTTLS command. it also
--- flush the received buffer to prevent application confusing
+-- This is typically used to negotiate a TLS channel on an already
+-- established channel, e.g., supporting a STARTTLS command. It also
+-- flushes the received buffer to prevent application confusing
 -- received data before and after the setSecure call.
 --
 -- If the connection is already using TLS, nothing else happens.
