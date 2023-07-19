@@ -28,7 +28,7 @@ Library
                    , containers
                    , data-default-class
                    , network >= 2.6.3
-                   , tls >= 1.4
+                   , tls >= 1.4 && >= 1.7
                    , socks >= 0.6
                    , x509 >= 1.5
                    , x509-store >= 1.5
