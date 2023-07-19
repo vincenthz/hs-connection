@@ -1,5 +1,5 @@
 Name:                connection
-Version:             0.3.1
+Version:             0.4.1
 Description:
     Simple network library for all your connection need.
     .
@@ -30,10 +30,10 @@ Library
                    , network >= 2.6.3
                    , tls >= 1.4 && >= 1.7
                    , socks >= 0.6
-                   , x509 >= 1.5
-                   , x509-store >= 1.5
-                   , x509-system >= 1.5
-                   , x509-validation >= 1.5
+                   , crypton-x509 >= 0.33
+                   , crypton-x509-store >= 1.6.9
+                   , crypton-x509-system >= 1.6.7
+                   , crypton-x509-validation >= 1.6.12
   Exposed-modules:   Network.Connection
   Other-modules:     Network.Connection.Types
   ghc-options:       -Wall
